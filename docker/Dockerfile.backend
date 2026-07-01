@@ -1,0 +1,33 @@
+# syntax=docker/dockerfile:1
+# ─── Stage 1: install Python deps ─────────────────────────────────────────
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt --target /app/packages
+
+# ─── Stage 2: runtime ─────────────────────────────────────────────────────
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Copy installed packages
+COPY --from=builder /app/packages /usr/local/lib/python3.12/site-packages
+
+# Copy application source
+COPY backend/ ./backend/
+COPY banks/ ./banks/
+
+WORKDIR /app/backend
+
+# Data directory (mounted as volume in production; SQLite lives here)
+RUN mkdir -p data output
+
+ENV PYTHONPATH=/app/backend
+ENV DATA_DIR=/app/backend/data
+ENV DB_PATH=/app/backend/data/finance.db
+
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

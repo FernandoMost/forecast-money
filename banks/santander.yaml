@@ -1,0 +1,76 @@
+# Santander España — Excel export column mapping
+# This file drives the parser; no code changes needed to support a new bank.
+# Copy this file, rename it (e.g. banks/bbva.yaml), adjust the values below.
+
+bank:
+  name: "Santander España"
+  id: "santander"
+  locale: "es_ES"              # Used for number parsing (comma decimal, period thousands)
+  currency: "EUR"
+  encoding: "utf-8"
+
+file:
+  extension: "xlsx"
+
+sheet:
+  index: 0                     # 0-based sheet index to read
+  header_row: 8                # 1-based row number where column headers live
+  data_start_row: 9            # 1-based row number where transactions begin
+  # Metadata lives above header_row; we extract it for context
+  metadata:
+    account_label_row: 1
+    account_value_row: 2
+    account_col: 3             # 1-based column index (C)
+    holder_label_row: 3
+    holder_value_row: 4
+    holder_col: 3
+    balance_value_row: 4
+    balance_col: 4             # 1-based column index (D)
+    export_date_value_row: 2
+    export_date_col: 4
+
+columns:
+  # Map logical field names to 1-based column indices in the spreadsheet
+  date_operation: 1            # "Fecha operación"  — DD/MM/YYYY string
+  date_value: 2                # "Fecha valor"       — DD/MM/YYYY string
+  description: 3               # "Concepto"
+  amount: 4                    # "Importe"           — e.g. "-14,50€"
+  balance: 5                   # "Saldo"             — e.g. "3.411,06€"
+  currency: 6                  # "Divisa"            — e.g. "EUR"
+
+parsing:
+  date_format: "%d/%m/%Y"
+  # Regex to strip non-numeric chars (except minus/comma) before float conversion
+  amount_strip_pattern: '[€\s\.]'
+  amount_decimal_separator: ","
+  # Rows whose Concepto starts with this prefix are reversals/cancellations
+  reversal_prefix: "ANULACION"
+  # Minimum non-null columns for a row to be considered a valid transaction
+  min_valid_columns: 4
+
+# Transaction type detection — matched against the Concepto field (case-insensitive)
+transaction_types:
+  - id: "card_mobile"
+    pattern: "^PAGO MOVIL EN"
+  - id: "card_online"
+    pattern: "^COMPRA INTERNET EN"
+  - id: "card_physical"
+    pattern: "^COMPRA "
+  - id: "direct_debit"
+    pattern: "^RECIBO "
+  - id: "bizum_out"
+    pattern: "^BIZUM A FAVOR DE"
+  - id: "bizum_in"
+    pattern: "^BIZUM DE"
+  - id: "transfer_out"
+    pattern: "^TRANSFERENCIA A FAVOR DE"
+  - id: "transfer_in"
+    pattern: "^TRANSFERENCIA DE "
+  - id: "transfer_instant"
+    pattern: "^TRANSFERENCIA INMEDIATA"
+  - id: "atm"
+    pattern: "^RETIRADA DE EFECTIVO"
+  - id: "reversal"
+    pattern: "^ANULACION"
+  - id: "payroll"
+    pattern: "(?:NOMINA|SALARIO|SUELDO)"
