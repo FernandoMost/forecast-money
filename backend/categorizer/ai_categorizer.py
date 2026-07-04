@@ -64,7 +64,22 @@ class AiCategorizer:
     def categorize_transaction(self, tx: dict) -> dict:
         description = tx["description"]
 
-        # 1. Try cache
+        # 1. Rules first — fast, deterministic, no IO
+        rule_cat, rule_sub = categorize(description)
+        rule_label = rule_clean(description)
+        rules_matched = rule_cat != "uncategorized" or rule_label is not None
+
+        if rules_matched:
+            return {
+                **tx,
+                "category": rule_cat,
+                "subcategory": rule_sub,
+                "category_source": "rule",
+                "clean_description": rule_label,
+                "clean_description_source": "rule" if rule_label else None,
+            }
+
+        # 2. Cache — result from a previous AI session
         cached = self._cache_get(description)
         if cached:
             return {
@@ -76,7 +91,7 @@ class AiCategorizer:
                 "clean_description_source": "cache",
             }
 
-        # 2. Try Ollama
+        # 3. Ollama — only for descriptions unknown to rules and not yet cached
         if self._is_ollama_available():
             result = self._call_ollama(description)
             if result:
@@ -95,16 +110,14 @@ class AiCategorizer:
                     "clean_description_source": "ai",
                 }
 
-        # 3. Fallback to rule-based
-        category, subcategory = categorize(description)
-        label = rule_clean(description)
+        # 4. Pure rule fallback (Ollama unavailable, nothing cached)
         return {
             **tx,
-            "category": category,
-            "subcategory": subcategory,
+            "category": rule_cat,
+            "subcategory": rule_sub,
             "category_source": "rule",
-            "clean_description": label,
-            "clean_description_source": "rule" if label else None,
+            "clean_description": rule_label,
+            "clean_description_source": "rule" if rule_label else None,
         }
 
     # ------------------------------------------------------------------
