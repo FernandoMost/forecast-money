@@ -46,6 +46,8 @@ export interface Transaction {
   date: string;
   date_value: string;
   description: string;
+  clean_description: string | null;
+  clean_description_source: string | null;
   amount: number;
   balance: number;
   currency: string;

@@ -53,6 +53,8 @@ class Transaction(BaseModel):
     date: str
     date_value: str
     description: str
+    clean_description: str | None
+    clean_description_source: str | None
     amount: float
     balance: float
     currency: str

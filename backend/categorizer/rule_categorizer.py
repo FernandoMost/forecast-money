@@ -13,6 +13,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from categorizer.description_cleaner import clean_description as rule_clean
+
 
 @dataclass
 class CategoryRule:
@@ -120,9 +122,12 @@ def categorize(description: str) -> tuple[str, str]:
 def categorize_transaction(tx: dict) -> dict:
     """Mutates (or returns a copy of) a normalized transaction with category fields filled."""
     cat, sub = categorize(tx["description"])
+    label = rule_clean(tx["description"])
     return {
         **tx,
         "category": cat,
         "subcategory": sub,
         "category_source": "rule",
+        "clean_description": label,
+        "clean_description_source": "rule" if label else None,
     }

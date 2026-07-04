@@ -46,6 +46,8 @@ def normalize(raw: RawTransaction, bank_id: str) -> dict[str, Any]:
         "balance": round(raw.balance, 2),
         "currency": raw.currency,
         "is_reversal": raw.is_reversal,
+        "clean_description": None,
+        "clean_description_source": None,
         "category": None,
         "category_source": None,
         "month": raw.date_operation.strftime("%Y-%m"),

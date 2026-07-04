@@ -42,22 +42,24 @@ class SqliteStore:
                 );
 
                 CREATE TABLE IF NOT EXISTS transactions (
-                    id               TEXT PRIMARY KEY,
-                    import_id        TEXT REFERENCES imports(id),
-                    bank_id          TEXT NOT NULL,
-                    date             TEXT NOT NULL,
-                    date_value       TEXT NOT NULL,
-                    description      TEXT NOT NULL,
-                    amount           REAL NOT NULL,
-                    balance          REAL NOT NULL,
-                    currency         TEXT NOT NULL DEFAULT 'EUR',
-                    is_reversal      INTEGER NOT NULL DEFAULT 0,
-                    category         TEXT,
-                    subcategory      TEXT,
-                    category_source  TEXT,
-                    month            TEXT NOT NULL,
-                    year             INTEGER NOT NULL,
-                    raw_json         TEXT  -- full normalized dict for future schema changes
+                    id                       TEXT PRIMARY KEY,
+                    import_id                TEXT REFERENCES imports(id),
+                    bank_id                  TEXT NOT NULL,
+                    date                     TEXT NOT NULL,
+                    date_value               TEXT NOT NULL,
+                    description              TEXT NOT NULL,
+                    clean_description        TEXT,
+                    clean_description_source TEXT,
+                    amount                   REAL NOT NULL,
+                    balance                  REAL NOT NULL,
+                    currency                 TEXT NOT NULL DEFAULT 'EUR',
+                    is_reversal              INTEGER NOT NULL DEFAULT 0,
+                    category                 TEXT,
+                    subcategory              TEXT,
+                    category_source          TEXT,
+                    month                    TEXT NOT NULL,
+                    year                     INTEGER NOT NULL,
+                    raw_json                 TEXT  -- full normalized dict for future schema changes
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_tx_month   ON transactions(month);
@@ -96,14 +98,17 @@ class SqliteStore:
             for tx in transactions:
                 result = conn.execute(
                     """INSERT OR IGNORE INTO transactions
-                       (id, import_id, bank_id, date, date_value, description, amount, balance,
-                        currency, is_reversal, category, subcategory,
+                       (id, import_id, bank_id, date, date_value, description,
+                        clean_description, clean_description_source,
+                        amount, balance, currency, is_reversal, category, subcategory,
                         category_source, month, year, raw_json)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         tx["id"], import_id, tx["bank_id"],
                         tx["date"], tx["date_value"],
-                        tx["description"], tx["amount"], tx["balance"],
+                        tx["description"],
+                        tx.get("clean_description"), tx.get("clean_description_source"),
+                        tx["amount"], tx["balance"],
                         tx.get("currency", "EUR"),
                         1 if tx.get("is_reversal") else 0,
                         tx.get("category"), tx.get("subcategory"),
@@ -149,7 +154,8 @@ class SqliteStore:
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         query = f"""
-            SELECT id, bank_id, date, date_value, description, amount, balance,
+            SELECT id, bank_id, date, date_value, description, clean_description,
+                   clean_description_source, amount, balance,
                    currency, is_reversal, category, subcategory,
                    category_source, month, year
             FROM transactions
@@ -162,8 +168,9 @@ class SqliteStore:
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
 
-        cols = ["id", "bank_id", "date", "date_value", "description", "amount",
-                "balance", "currency", "is_reversal",
+        cols = ["id", "bank_id", "date", "date_value", "description",
+                "clean_description", "clean_description_source",
+                "amount", "balance", "currency", "is_reversal",
                 "category", "subcategory", "category_source", "month", "year"]
         return [dict(zip(cols, r)) for r in rows]
 

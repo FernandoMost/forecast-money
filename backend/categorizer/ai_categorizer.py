@@ -4,6 +4,7 @@ categorizer/ai_categorizer.py
 AI-powered categorizer using Ollama (local LLM, default llama3).
 - Checks SQLite cache first — never sends the same description twice.
 - Falls back gracefully to rule-based categorizer if Ollama is unavailable.
+- Also produces a clean_description (friendly label) alongside category/subcategory.
 - All data stays on the local machine. No external API calls.
 """
 
@@ -13,11 +14,11 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from typing import Any
 
 import requests
 
 from categorizer.rule_categorizer import categorize
+from categorizer.description_cleaner import clean_description as rule_clean
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +28,11 @@ _VALID_CATEGORIES = {
     "cash", "admin", "uncategorized",
 }
 
-_SYSTEM_PROMPT = """You are a financial transaction categorizer.
-Given a Spanish bank transaction description, output ONLY a JSON object with two fields:
+_SYSTEM_PROMPT = """You are a financial transaction labeler for a Spanish bank account.
+Given a raw bank transaction description, output ONLY a JSON object with three fields:
   "category": one of [income, housing, subscriptions, groceries, restaurants, transport, health, shopping, entertainment, transfers, cash, admin, uncategorized]
   "subcategory": a short English snake_case label (e.g. "rent", "supermarket", "fast_food", "fuel")
+  "clean_description": a very short human-friendly label in Spanish (2-4 words max, e.g. "Mercadona", "Amazon", "Gasolina", "Parking", "Netflix", "Cajero", "Peajes", "Nómina")
 
 Do not output anything other than the JSON object. No explanation, no markdown fences."""
 
@@ -39,6 +41,7 @@ class AiCategorizer:
     """
     Thin wrapper around Ollama's local REST API.
     Uses SQLite as a persistent cache to avoid repeat LLM calls.
+    Handles both category/subcategory and clean_description in a single LLM call.
     """
 
     def __init__(
@@ -64,18 +67,45 @@ class AiCategorizer:
         # 1. Try cache
         cached = self._cache_get(description)
         if cached:
-            return {**tx, "category": cached["category"], "subcategory": cached["subcategory"], "category_source": "cache"}
+            return {
+                **tx,
+                "category": cached["category"],
+                "subcategory": cached["subcategory"],
+                "category_source": "cache",
+                "clean_description": cached["clean_description"],
+                "clean_description_source": "cache",
+            }
 
         # 2. Try Ollama
         if self._is_ollama_available():
             result = self._call_ollama(description)
             if result:
-                self._cache_set(description, result["category"], result["subcategory"])
-                return {**tx, **result, "category_source": "ai"}
+                self._cache_set(
+                    description,
+                    result["category"],
+                    result["subcategory"],
+                    result.get("clean_description"),
+                )
+                return {
+                    **tx,
+                    "category": result["category"],
+                    "subcategory": result["subcategory"],
+                    "category_source": "ai",
+                    "clean_description": result.get("clean_description"),
+                    "clean_description_source": "ai",
+                }
 
         # 3. Fallback to rule-based
         category, subcategory = categorize(description)
-        return {**tx, "category": category, "subcategory": subcategory, "category_source": "rule"}
+        label = rule_clean(description)
+        return {
+            **tx,
+            "category": category,
+            "subcategory": subcategory,
+            "category_source": "rule",
+            "clean_description": label,
+            "clean_description_source": "rule" if label else None,
+        }
 
     # ------------------------------------------------------------------
     # Ollama interaction
@@ -121,9 +151,14 @@ class AiCategorizer:
             data = json.loads(raw)
             category = data.get("category", "uncategorized")
             subcategory = data.get("subcategory", "other")
+            clean = data.get("clean_description") or None
             if category not in _VALID_CATEGORIES:
                 category = "uncategorized"
-            return {"category": category, "subcategory": str(subcategory)}
+            return {
+                "category": category,
+                "subcategory": str(subcategory),
+                "clean_description": str(clean).strip() if clean else None,
+            }
         except (json.JSONDecodeError, AttributeError):
             logger.warning("Could not parse LLM response: %r", raw[:200])
             return None
@@ -136,35 +171,47 @@ class AiCategorizer:
         with sqlite3.connect(self._cache_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS category_cache (
-                    description_hash TEXT PRIMARY KEY,
-                    description      TEXT NOT NULL,
-                    category         TEXT NOT NULL,
-                    subcategory      TEXT NOT NULL,
-                    source           TEXT NOT NULL DEFAULT 'ai',
-                    created_at       TEXT DEFAULT (datetime('now'))
+                    description_hash      TEXT PRIMARY KEY,
+                    description           TEXT NOT NULL,
+                    category              TEXT NOT NULL,
+                    subcategory           TEXT NOT NULL,
+                    clean_description     TEXT,
+                    source                TEXT NOT NULL DEFAULT 'ai',
+                    created_at            TEXT DEFAULT (datetime('now'))
                 )
             """)
+            # Migrate existing cache tables that predate clean_description column
+            try:
+                conn.execute("ALTER TABLE category_cache ADD COLUMN clean_description TEXT")
+            except Exception:  # noqa: BLE001
+                pass  # column already exists
             conn.commit()
 
     def _cache_get(self, description: str) -> dict | None:
         key = self._hash(description)
         with sqlite3.connect(self._cache_path) as conn:
             row = conn.execute(
-                "SELECT category, subcategory FROM category_cache WHERE description_hash = ?",
+                "SELECT category, subcategory, clean_description FROM category_cache WHERE description_hash = ?",
                 (key,),
             ).fetchone()
         if row:
-            return {"category": row[0], "subcategory": row[1]}
+            return {"category": row[0], "subcategory": row[1], "clean_description": row[2]}
         return None
 
-    def _cache_set(self, description: str, category: str, subcategory: str) -> None:
+    def _cache_set(
+        self,
+        description: str,
+        category: str,
+        subcategory: str,
+        clean_description: str | None,
+    ) -> None:
         key = self._hash(description)
         with sqlite3.connect(self._cache_path) as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO category_cache
-                   (description_hash, description, category, subcategory, source)
-                   VALUES (?, ?, ?, ?, 'ai')""",
-                (key, description[:500], category, subcategory),
+                   (description_hash, description, category, subcategory, clean_description, source)
+                   VALUES (?, ?, ?, ?, ?, 'ai')""",
+                (key, description[:500], category, subcategory, clean_description),
             )
             conn.commit()
 
