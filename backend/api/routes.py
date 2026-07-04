@@ -2,12 +2,13 @@
 api/routes.py — FastAPI route handlers.
 
 Endpoints:
-  POST /upload                — Upload a bank statement xlsx
-  GET  /summary/{month}       — Monthly financial summary
-  GET  /transactions          — Paginated + filtered transaction list
-  GET  /health-score          — Full 7-rule health analysis
-  GET  /health                — API health check
-  GET  /months                — Available months list
+  POST   /upload                — Upload a bank statement xlsx
+  GET    /summary/{month}       — Monthly financial summary
+  GET    /transactions          — Paginated + filtered transaction list
+  GET    /health-score          — Full 7-rule health analysis
+  GET    /health                — API health check
+  GET    /months                — Available months list
+  DELETE /data                  — Wipe all transactions and imports
 """
 
 from __future__ import annotations
@@ -226,3 +227,14 @@ def health_check(
         available_months=months,
         total_transactions=total,
     )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /data
+# ---------------------------------------------------------------------------
+
+@router.delete("/data", summary="Wipe all transactions and imports")
+def clear_data(store: SqliteStore = Depends(get_store)):
+    """Deletes all stored transactions and import records. Irreversible."""
+    result = store.clear_all()
+    return {"status": "cleared", **result}

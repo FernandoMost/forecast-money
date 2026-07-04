@@ -225,6 +225,15 @@ class SqliteStore:
         """Returns all non-reversal transactions for the health engine."""
         return self.get_transactions(limit=100_000)
 
+    def clear_all(self) -> dict:
+        """Deletes all transactions and imports. Returns counts of deleted rows."""
+        with self._connect() as conn:
+            tx_count = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+            import_count = conn.execute("SELECT COUNT(*) FROM imports").fetchone()[0]
+            conn.execute("DELETE FROM transactions")
+            conn.execute("DELETE FROM imports")
+        return {"deleted_transactions": tx_count, "deleted_imports": import_count}
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
