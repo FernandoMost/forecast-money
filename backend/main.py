@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router
 
 app = FastAPI(
-    title="Finance Analyzer API",
+    title="Forecast Money API",
     description="Privacy-first personal finance analyzer. All data stays local.",
     version="1.0.0",
     docs_url="/docs",

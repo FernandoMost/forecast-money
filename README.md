@@ -1,4 +1,4 @@
-# Finance Analyzer
+# Forecast Money
 
 > Privacy-first personal finance analyzer — all data stays on your machine by default.
 

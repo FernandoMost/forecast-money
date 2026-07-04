@@ -3,7 +3,7 @@ import "./globals.css";
 import Nav from "@/components/Nav";
 
 export const metadata: Metadata = {
-  title: "Finance Analyzer",
+  title: "Forecast Money",
   description: "Privacy-first personal finance analyzer",
 };
 

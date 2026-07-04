@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { api, UploadResponse } from "@/lib/api";
+import { api, UploadResponse, RecategorizeResponse } from "@/lib/api";
 
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -11,14 +11,18 @@ export default function UploadPage() {
   const [result, setResult] = useState<UploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Recategorize state
+  const [recatLoading, setRecatLoading] = useState(false);
+  const [recatUseAi, setRecatUseAi] = useState(false);
+  const [recatResult, setRecatResult] = useState<RecategorizeResponse | null>(null);
+  const [recatError, setRecatError] = useState<string | null>(null);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!file) return;
-
     setLoading(true);
     setError(null);
     setResult(null);
-
     try {
       const res = await api.upload(file, bank, useAi);
       setResult(res);
@@ -26,6 +30,20 @@ export default function UploadPage() {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRecategorize() {
+    setRecatLoading(true);
+    setRecatError(null);
+    setRecatResult(null);
+    try {
+      const res = await api.recategorize(recatUseAi);
+      setRecatResult(res);
+    } catch (err: unknown) {
+      setRecatError(err instanceof Error ? err.message : "Recategorize failed");
+    } finally {
+      setRecatLoading(false);
     }
   }
 
@@ -76,12 +94,7 @@ export default function UploadPage() {
           />
           <label htmlFor="use-ai" className="text-sm text-gray-700">
             Use AI categorization (requires{" "}
-            <a
-              href="https://ollama.ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-indigo-600 underline"
-            >
+            <a href="https://ollama.ai" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline">
               Ollama
             </a>{" "}
             running locally)
@@ -129,6 +142,63 @@ export default function UploadPage() {
           </div>
         </div>
       )}
+
+      {/* Recategorize section */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Recategorize all transactions</h2>
+          <p className="text-gray-500 text-xs mt-1">
+            Re-applies your current rules from <code className="bg-gray-100 px-1 rounded">config/category_rules.yaml</code> to every stored transaction. Useful after editing rules.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="recat-ai"
+            checked={recatUseAi}
+            onChange={(e) => setRecatUseAi(e.target.checked)}
+            className="rounded"
+          />
+          <label htmlFor="recat-ai" className="text-sm text-gray-700">
+            Use AI for unmatched descriptions
+          </label>
+        </div>
+
+        <button
+          onClick={handleRecategorize}
+          disabled={recatLoading}
+          className="w-full py-2.5 px-4 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {recatLoading ? "Recategorizing..." : "Recategorize all"}
+        </button>
+
+        {recatError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">
+            <strong>Error:</strong> {recatError}
+          </div>
+        )}
+
+        {recatResult && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm space-y-2">
+            <div className="font-semibold text-gray-800">
+              {recatResult.updated} transactions updated
+            </div>
+            <div className="text-gray-600">
+              <span className="font-medium">Category sources: </span>
+              {Object.entries(recatResult.category_sources).map(([src, n]) => (
+                <span key={src} className="mr-3">{src}: {n}</span>
+              ))}
+            </div>
+            <div className="text-gray-600">
+              <span className="font-medium">Description sources: </span>
+              {Object.entries(recatResult.clean_description_sources).map(([src, n]) => (
+                <span key={src} className="mr-3">{src}: {n}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

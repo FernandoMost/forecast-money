@@ -237,7 +237,7 @@ def _render_text_report(health, monthly_summaries: dict, meta) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Finance Analyzer — local ETL")
+    parser = argparse.ArgumentParser(description="Forecast Money — local ETL")
     parser.add_argument("file", type=Path, help="Path to bank statement Excel file")
     parser.add_argument("--bank", default="santander", help="Bank config name (without .yaml)")
     parser.add_argument("--use-ai", action="store_true", help="Use Ollama AI categorizer (requires Ollama running)")

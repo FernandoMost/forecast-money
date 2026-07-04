@@ -10,6 +10,12 @@ const CATEGORIES = [
   "transfers", "cash", "admin", "uncategorized",
 ];
 
+const SOURCE_BADGE: Record<string, string> = {
+  rule:  "bg-gray-100 text-gray-500",
+  ai:    "bg-purple-100 text-purple-700",
+  cache: "bg-blue-100 text-blue-600",
+};
+
 export default function TransactionsPage() {
   const [months, setMonths] = useState<string[]>([]);
   const [selectedMonth, setSelectedMonth] = useState("");
@@ -96,14 +102,25 @@ export default function TransactionsPage() {
               {!loading && data?.items.map((tx) => (
                 <tr key={tx.id} className={`hover:bg-gray-50 ${tx.is_reversal ? "opacity-50" : ""}`}>
                   <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{tx.date}</td>
-                  <td className="px-4 py-2.5 text-gray-800 max-w-xs truncate" title={tx.description}>
-                    {tx.description}
+                  <td className="px-4 py-2.5 max-w-xs" title={tx.description}>
+                    {tx.clean_description ? (
+                      <span className="text-gray-900 font-medium">{tx.clean_description}</span>
+                    ) : (
+                      <span className="text-gray-500 truncate block">{tx.description}</span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     {tx.category ? (
-                      <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-50 text-indigo-700 font-medium">
-                        {tx.subcategory ?? tx.category}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-50 text-indigo-700 font-medium">
+                          {tx.subcategory ?? tx.category}
+                        </span>
+                        {tx.category_source && (
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${SOURCE_BADGE[tx.category_source] ?? "bg-gray-100 text-gray-400"}`}>
+                            {tx.category_source}
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-gray-300">—</span>
                     )}

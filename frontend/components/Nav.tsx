@@ -16,7 +16,7 @@ export default function Nav() {
   return (
     <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-8">
       <span className="font-bold text-gray-900 text-lg tracking-tight">
-        Finance Analyzer
+        Forecast Money
       </span>
       <div className="flex gap-1">
         {links.map((link) => (

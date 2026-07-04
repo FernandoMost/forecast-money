@@ -106,6 +106,12 @@ export interface UploadResponse {
   metadata: Record<string, unknown>;
 }
 
+export interface RecategorizeResponse {
+  updated: number;
+  category_sources: Record<string, number>;
+  clean_description_sources: Record<string, number>;
+}
+
 // --- API calls ---
 
 export const api = {
@@ -127,5 +133,9 @@ export const api = {
     form.append("bank", bank);
     form.append("use_ai", String(useAi));
     return post<UploadResponse>("/upload", form);
+  },
+  recategorize: (useAi = false) => {
+    const form = new FormData();
+    return post<RecategorizeResponse>(`/recategorize?use_ai=${useAi}`, form);
   },
 };

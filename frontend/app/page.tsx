@@ -1,4 +1,4 @@
-// app/page.tsx — Dashboard: score + alerts + monthly overview
+// app/page.tsx — Dashboard: score + alerts + monthly overview + recent transactions
 
 import { api } from "@/lib/api";
 import { formatEur, STATUS_COLORS, STATUS_BADGE } from "@/lib/utils";
@@ -96,6 +96,15 @@ export default async function DashboardPage() {
     );
   }
 
+  // Fetch recent transactions for the dashboard widget
+  let recentTxs: Awaited<ReturnType<typeof api.transactions>>["items"] = [];
+  try {
+    const txData = await api.transactions({ limit: 8 });
+    recentTxs = txData.items;
+  } catch {
+    // non-critical — dashboard still works without it
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -130,6 +139,48 @@ export default async function DashboardPage() {
 
       {/* Alerts */}
       <AlertBanner alerts={health.alerts} />
+
+      {/* Recent Transactions */}
+      {recentTxs.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">
+              Recent Transactions
+            </h3>
+            <Link href="/transactions" className="text-xs text-indigo-600 hover:underline font-medium">
+              View all →
+            </Link>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-gray-100">
+                {recentTxs.map((tx) => (
+                  <tr key={tx.id} className={`hover:bg-gray-50 ${tx.is_reversal ? "opacity-50" : ""}`}>
+                    <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap w-24">{tx.date}</td>
+                    <td className="px-4 py-2.5 text-gray-800 max-w-xs" title={tx.description}>
+                      {tx.clean_description ? (
+                        <span className="font-medium">{tx.clean_description}</span>
+                      ) : (
+                        <span className="text-gray-500 truncate block">{tx.description}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {tx.category && (
+                        <span className="px-2 py-0.5 rounded-full text-xs bg-indigo-50 text-indigo-700 font-medium whitespace-nowrap">
+                          {tx.subcategory ?? tx.category}
+                        </span>
+                      )}
+                    </td>
+                    <td className={`px-4 py-2.5 text-right font-medium tabular-nums whitespace-nowrap ${tx.amount < 0 ? "text-red-600" : "text-green-600"}`}>
+                      {formatEur(tx.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Rules grid */}
       <div>
