@@ -1,0 +1,243 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# category_rules.yaml — User-configurable transaction categorization rules
+#
+# Format:
+#   - category: <string>      # top-level category
+#     subcategory: <string>   # subcategory (snake_case)
+#     patterns:               # list of regex strings (case-insensitive, first match wins)
+#       - "REGEX_1"
+#       - "REGEX_2"
+#
+# Rules are evaluated in order — the FIRST match wins.
+# Edit freely: add, remove, or reorder rules.
+# Run POST /api/v1/recategorize after changes to update existing transactions.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Income ───────────────────────────────────────────────────────────────────
+- category: income
+  subcategory: payroll
+  patterns:
+    - "NOMINA|SALARIO|SUELDO|CONCEPTO\\s+Nomina"
+
+- category: income
+  subcategory: transfer_in
+  patterns:
+    - "^TRANSFERENCIA DE "
+    - "^TRANSFERENCIA INMEDIATA DE"
+
+- category: income
+  subcategory: bizum_in
+  patterns:
+    - "^BIZUM DE "
+
+- category: income
+  subcategory: refund
+  patterns:
+    - "^ANULACION"
+    - "DEVOLUCION|REEMBOLSO|REFUND"
+
+- category: income
+  subcategory: paypal_in
+  patterns:
+    - "PAYPAL.*CONCEPTO YYW"
+
+# ── Housing ──────────────────────────────────────────────────────────────────
+- category: housing
+  subcategory: rent
+  patterns:
+    - "ALQUILER|ARRENDAMIENTO|CONCEPTO.*[Aa]lquiler"
+
+- category: housing
+  subcategory: utilities_electricity
+  patterns:
+    - "ENDESA|IBERDROLA|NATURGY|REPSOL.*LUZ|ELECTRICIDAD|WASABI ENERGIA"
+
+- category: housing
+  subcategory: utilities_water
+  patterns:
+    - "VIAQUA|AGUAS|AGUA\\b"
+
+- category: housing
+  subcategory: utilities_heating
+  patterns:
+    - "AGENCIA VILLAR|CALEFAC"
+
+- category: housing
+  subcategory: internet_phone
+  patterns:
+    - "PEPEPHONE|MOVISTAR|VODAFONE|ORANGE|YOIGO|DIGI\\b|MASMOVIL"
+
+# ── Subscriptions ─────────────────────────────────────────────────────────────
+- category: subscriptions
+  subcategory: streaming
+  patterns:
+    - "NETFLIX|SPOTIFY|HBO|DISNEY|PRIME VIDEO|APPLE.*TV|TWITCH"
+
+- category: subscriptions
+  subcategory: gym
+  patterns:
+    - "DREAMFIT|GIMNASIO|GYM\\b|MCFIT|FITNESS"
+
+- category: subscriptions
+  subcategory: sports_club
+  patterns:
+    - "XESTION DE ACTIVIDADES DEPORTIVAS|DEPORTIV"
+
+- category: subscriptions
+  subcategory: paypal_sub
+  patterns:
+    - "^RECIBO PayPal"
+
+- category: subscriptions
+  subcategory: pagatelia
+  patterns:
+    - "PAGATELIA"
+
+- category: subscriptions
+  subcategory: other_sub
+  patterns:
+    - "^RECIBO "
+
+# ── Groceries ─────────────────────────────────────────────────────────────────
+- category: groceries
+  subcategory: supermarket
+  patterns:
+    - "LIDL|MERCADONA|CARREFOUR|ALCAMPO|ALDI|DIA\\b|AHORRO|MERCAMAS|MERKASIA|MARKET SANTIAGO"
+
+- category: groceries
+  subcategory: other_food_shop
+  patterns:
+    - "AUTOSERVICIO|FRUTERIA|VERDULERIA|GRAN BAZAR"
+
+# ── Restaurants & Leisure ─────────────────────────────────────────────────────
+- category: restaurants
+  subcategory: fast_food
+  patterns:
+    - "MC DONALDS|MCDONALDS|BURGER KING|BK\\d|FIVE GUYS|KFC|POPEYES|KEBAB|GYROS|ROYAL DONNER"
+
+- category: restaurants
+  subcategory: restaurant
+  patterns:
+    - "RESTAURANTE|COMPOSTELA H\\.|WOK TOWN|SUPERTROPICAL|VIPS|A FUEGO LENTO|SABORES|CAFE BAR|CAFE DALIA|ADELIA|MAMBARA|GINOS|LA MARIPEPA|LOS SECRETOS|LA NEGRA|VERMUTERIA|BAR AQUEVINO|PIK POLLO|COSTA VELLA|GALIA|SOU SHUSHI|SUSHI|PLAZA LENCE|ROYAL KEBAB|ASIAN POCKET|CAFE LA MORENA"
+
+- category: restaurants
+  subcategory: cafe_bakery
+  patterns:
+    - "CAFE\\b|CAFETERIA|COFFEE|BOANDGO|FORNO|GRANIER|MOLLETE|TOSTA|BAKERY|CHURRERIA"
+
+- category: restaurants
+  subcategory: bar_pub
+  patterns:
+    - "PUB\\b|BAR\\b|CERVECERIA|CANTINA|GALURESA"
+
+# ── Transport ─────────────────────────────────────────────────────────────────
+- category: transport
+  subcategory: parking
+  patterns:
+    - "APARCAMIENTO|PARKING\\b|PARKIA"
+
+- category: transport
+  subcategory: fuel
+  patterns:
+    - "PETROPRIX|PLENOIL|GASOLINERA|REPSOL.*GASOL|GALURESA|COMBUSTIBLE|CARBURANTE"
+
+- category: transport
+  subcategory: rideshare
+  patterns:
+    - "CABIFY|UBER\\b|BOLT\\b|FREE NOW"
+
+- category: transport
+  subcategory: public_transit
+  patterns:
+    - "RENFE|ALSA|AVE\\b|BUS\\b|METRO\\b|CONCELLO DE SAN|TRAM\\b"
+
+- category: transport
+  subcategory: train_station
+  patterns:
+    - "CHAMARTIN|ATOCHA|ESTACION"
+
+- category: transport
+  subcategory: tyre_service
+  patterns:
+    - "NEUMATICOS|RUEDAS"
+
+# ── Health ────────────────────────────────────────────────────────────────────
+- category: health
+  subcategory: pharmacy
+  patterns:
+    - "FARMACIA"
+
+- category: health
+  subcategory: medical
+  patterns:
+    - "CLINICA|MEDICO|DENTISTA|HOSPITAL|CENTRO.*MEDIC"
+
+# ── Shopping ──────────────────────────────────────────────────────────────────
+- category: shopping
+  subcategory: online
+  patterns:
+    - "AMAZON|ALIEXPRESS|WALLAPOP|VINTED|DECATHLON.*INTERNET|WWW\\."
+
+- category: shopping
+  subcategory: clothing
+  patterns:
+    - "VINTED|ZARA\\b|HM\\b|MANGO\\b|PRIMARK|SUPEREGALO|SUPERREGALO|IPO CONCEPT"
+
+- category: shopping
+  subcategory: electronics
+  patterns:
+    - "PCCOMPONENTES|MEDIAMARKT|FNAC"
+
+- category: shopping
+  subcategory: general
+  patterns:
+    - "PRIMAPRIX|DECATHLON|GRAN BAZAR"
+
+# ── Entertainment ─────────────────────────────────────────────────────────────
+- category: entertainment
+  subcategory: cinema
+  patterns:
+    - "CINESA|CINE\\b|WWW CINESA|FED.GALLEGA ATL|NYX.*HAPPY"
+
+- category: entertainment
+  subcategory: events
+  patterns:
+    - "ENTRADAS|TICKET|EVENTO"
+
+- category: entertainment
+  subcategory: gaming
+  patterns:
+    - "STEAM|PLAYSTATION|XBOX|NINTENDO|HAPPYGAMES"
+
+# ── Transfers / Bizum out ─────────────────────────────────────────────────────
+- category: transfers
+  subcategory: rent_contribution
+  patterns:
+    - "CONCEPTO.*[Cc]asper"
+
+- category: transfers
+  subcategory: bizum_out
+  patterns:
+    - "^BIZUM A FAVOR DE"
+
+- category: transfers
+  subcategory: transfer_out
+  patterns:
+    - "^TRANSFERENCIA A FAVOR DE"
+
+# ── Cash ──────────────────────────────────────────────────────────────────────
+- category: cash
+  subcategory: atm_withdrawal
+  patterns:
+    - "RETIRADA DE EFECTIVO|CAJERO"
+
+# ── Taxes / Admin ─────────────────────────────────────────────────────────────
+- category: admin
+  subcategory: city_tax
+  patterns:
+    - "PAGO RECIBO DE AY\\."
+
+- category: admin
+  subcategory: travel_tickets
+  patterns:
+    - "BIZUM VENTA BILLETES|COMPRA BIZUM.*BILLETES"

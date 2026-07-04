@@ -1,0 +1,318 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# clean_description_rules.yaml — User-configurable friendly label rules
+#
+# Format:
+#   - label: <string>         # short human-friendly label (shown in UI)
+#     patterns:               # list of regex strings (case-insensitive, first match wins)
+#       - "REGEX_1"
+#       - "REGEX_2"
+#
+# Rules are evaluated in order — the FIRST match wins.
+# If no rule matches, clean_description will be null (AI can fill it if enabled).
+# Edit freely: add, remove, or reorder rules.
+# Run POST /api/v1/recategorize after changes to update existing transactions.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Income ───────────────────────────────────────────────────────────────────
+- label: "Nómina"
+  patterns:
+    - "NOMINA|SALARIO|SUELDO"
+
+- label: "Devolución"
+  patterns:
+    - "^ANULACION|DEVOLUCION|REEMBOLSO|REFUND"
+
+- label: "Bizum recibido"
+  patterns:
+    - "^BIZUM DE "
+
+- label: "Transferencia recibida"
+  patterns:
+    - "^TRANSFERENCIA (INMEDIATA )?DE "
+
+- label: "Ingreso PayPal"
+  patterns:
+    - "PAYPAL.*CONCEPTO YYW"
+
+# ── Housing ──────────────────────────────────────────────────────────────────
+- label: "Alquiler"
+  patterns:
+    - "ALQUILER|ARRENDAMIENTO"
+
+- label: "Luz"
+  patterns:
+    - "ENDESA|IBERDROLA|NATURGY|ELECTRICIDAD|WASABI ENERGIA"
+
+- label: "Agua"
+  patterns:
+    - "VIAQUA|AGUAS\\b|AGUA\\b"
+
+- label: "Calefacción"
+  patterns:
+    - "AGENCIA VILLAR|CALEFAC"
+
+- label: "Teléfono / Internet"
+  patterns:
+    - "PEPEPHONE|MOVISTAR|VODAFONE|ORANGE|YOIGO|DIGI\\b|MASMOVIL"
+
+# ── Subscriptions ─────────────────────────────────────────────────────────────
+- label: "Netflix"
+  patterns:
+    - "NETFLIX"
+
+- label: "Spotify"
+  patterns:
+    - "SPOTIFY"
+
+- label: "HBO / Max"
+  patterns:
+    - "HBO|MAX\\b"
+
+- label: "Disney+"
+  patterns:
+    - "DISNEY"
+
+- label: "Prime Video"
+  patterns:
+    - "PRIME VIDEO"
+
+- label: "Apple TV+"
+  patterns:
+    - "APPLE.*TV"
+
+- label: "Twitch"
+  patterns:
+    - "TWITCH"
+
+- label: "Gimnasio"
+  patterns:
+    - "DREAMFIT|GIMNASIO|GYM\\b|MCFIT|FITNESS"
+
+- label: "Club deportivo"
+  patterns:
+    - "XESTION DE ACTIVIDADES DEPORTIVAS|DEPORTIV"
+
+- label: "PayPal (recibo)"
+  patterns:
+    - "^RECIBO PayPal"
+
+- label: "Pagatelia"
+  patterns:
+    - "PAGATELIA"
+
+# ── Groceries ─────────────────────────────────────────────────────────────────
+- label: "Lidl"
+  patterns:
+    - "LIDL"
+
+- label: "Mercadona"
+  patterns:
+    - "MERCADONA"
+
+- label: "Carrefour"
+  patterns:
+    - "CARREFOUR"
+
+- label: "Alcampo"
+  patterns:
+    - "ALCAMPO"
+
+- label: "Aldi"
+  patterns:
+    - "ALDI"
+
+- label: "Dia"
+  patterns:
+    - "\\bDIA\\b"
+
+- label: "Supermercado"
+  patterns:
+    - "AHORRO|MERCAMAS|MERKASIA|MARKET SANTIAGO|AUTOSERVICIO|FRUTERIA|VERDULERIA|GRAN BAZAR"
+
+# ── Restaurants & Leisure ─────────────────────────────────────────────────────
+- label: "McDonald's"
+  patterns:
+    - "MC DONALDS|MCDONALDS"
+
+- label: "Burger King"
+  patterns:
+    - "BURGER KING|BK\\d"
+
+- label: "Five Guys"
+  patterns:
+    - "FIVE GUYS"
+
+- label: "KFC"
+  patterns:
+    - "\\bKFC\\b|\\bPOPEYES\\b"
+
+- label: "Kebab"
+  patterns:
+    - "KEBAB|GYROS|ROYAL DONNER"
+
+- label: "Restaurante"
+  patterns:
+    - "RESTAURANTE|WOK TOWN|SUPERTROPICAL|VIPS|A FUEGO LENTO|SABORES|ADELIA|MAMBARA|GINOS|LA MARIPEPA|LOS SECRETOS|LA NEGRA|VERMUTERIA|PIK POLLO|COSTA VELLA|GALIA|SOU SHUSHI|SUSHI|ROYAL KEBAB|ASIAN POCKET"
+
+- label: "Cafetería"
+  patterns:
+    - "\\bCAFE\\b|\\bCAFETERIA\\b|COFFEE|BOANDGO|FORNO|GRANIER|MOLLETE|TOSTA|BAKERY|CHURRERIA"
+
+- label: "Bar"
+  patterns:
+    - "\\bPUB\\b|\\bBAR\\b|CERVECERIA|CANTINA|GALURESA"
+
+# ── Transport ─────────────────────────────────────────────────────────────────
+- label: "Parking"
+  patterns:
+    - "APARCAMIENTO|PARKING\\b|PARKIA"
+
+- label: "Gasolina"
+  patterns:
+    - "PETROPRIX|PLENOIL|GASOLINERA|REPSOL.*GASOL|COMBUSTIBLE|CARBURANTE"
+
+- label: "Cabify"
+  patterns:
+    - "CABIFY"
+
+- label: "Uber"
+  patterns:
+    - "\\bUBER\\b"
+
+- label: "Bolt"
+  patterns:
+    - "\\bBOLT\\b"
+
+- label: "Free Now"
+  patterns:
+    - "FREE NOW"
+
+- label: "Transporte público"
+  patterns:
+    - "RENFE|ALSA|\\bAVE\\b|\\bBUS\\b|\\bMETRO\\b|CONCELLO DE SAN|\\bTRAM\\b"
+
+- label: "Peajes"
+  patterns:
+    - "PEAJE|AUTOPISTA|VIA T|TELEPEAJE"
+
+- label: "Neumáticos"
+  patterns:
+    - "NEUMATICOS|RUEDAS"
+
+# ── Health ────────────────────────────────────────────────────────────────────
+- label: "Farmacia"
+  patterns:
+    - "FARMACIA"
+
+- label: "Médico / Clínica"
+  patterns:
+    - "CLINICA|MEDICO|DENTISTA|HOSPITAL|CENTRO.*MEDIC"
+
+# ── Shopping ──────────────────────────────────────────────────────────────────
+- label: "Amazon"
+  patterns:
+    - "AMAZON"
+
+- label: "AliExpress"
+  patterns:
+    - "ALIEXPRESS"
+
+- label: "Wallapop"
+  patterns:
+    - "WALLAPOP"
+
+- label: "Vinted"
+  patterns:
+    - "VINTED"
+
+- label: "Zara"
+  patterns:
+    - "\\bZARA\\b"
+
+- label: "H&M"
+  patterns:
+    - "\\bHM\\b|\\bH&M\\b"
+
+- label: "Mango"
+  patterns:
+    - "\\bMANGO\\b"
+
+- label: "Primark"
+  patterns:
+    - "PRIMARK"
+
+- label: "Decathlon"
+  patterns:
+    - "DECATHLON"
+
+- label: "PC Componentes"
+  patterns:
+    - "PCCOMPONENTES"
+
+- label: "MediaMarkt"
+  patterns:
+    - "MEDIAMARKT"
+
+- label: "Fnac"
+  patterns:
+    - "\\bFNAC\\b"
+
+- label: "Tienda online"
+  patterns:
+    - "WWW\\."
+
+- label: "Compra"
+  patterns:
+    - "PRIMAPRIX|SUPEREGALO|SUPERREGALO|IPO CONCEPT"
+
+# ── Entertainment ─────────────────────────────────────────────────────────────
+- label: "Cine"
+  patterns:
+    - "CINESA|\\bCINE\\b|WWW CINESA"
+
+- label: "Entradas / Evento"
+  patterns:
+    - "ENTRADAS|TICKET|EVENTO"
+
+- label: "Steam"
+  patterns:
+    - "STEAM"
+
+- label: "PlayStation"
+  patterns:
+    - "PLAYSTATION"
+
+- label: "Xbox"
+  patterns:
+    - "\\bXBOX\\b"
+
+- label: "Nintendo"
+  patterns:
+    - "NINTENDO"
+
+- label: "Videojuegos"
+  patterns:
+    - "HAPPYGAMES"
+
+# ── Transfers / Bizum out ─────────────────────────────────────────────────────
+- label: "Bizum enviado"
+  patterns:
+    - "^BIZUM A FAVOR DE"
+
+- label: "Transferencia enviada"
+  patterns:
+    - "^TRANSFERENCIA (INMEDIATA )?A FAVOR DE"
+
+# ── Cash ──────────────────────────────────────────────────────────────────────
+- label: "Cajero"
+  patterns:
+    - "RETIRADA DE EFECTIVO|CAJERO"
+
+# ── Taxes / Admin ─────────────────────────────────────────────────────────────
+- label: "Impuesto municipal"
+  patterns:
+    - "PAGO RECIBO DE AY\\."
+
+- label: "Billetes de viaje"
+  patterns:
+    - "BIZUM VENTA BILLETES|COMPRA BIZUM.*BILLETES"

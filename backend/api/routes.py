@@ -9,6 +9,7 @@ Endpoints:
   GET    /health                — API health check
   GET    /months                — Available months list
   DELETE /data                  — Wipe all transactions and imports
+  POST   /recategorize          — Re-apply rules to all stored transactions
 """
 
 from __future__ import annotations
@@ -25,12 +26,14 @@ from api.models import (
     HealthCheckResponse,
     HealthScoreResponse,
     MonthlySummary,
+    RecategorizeResponse,
     TransactionList,
     UploadResponse,
 )
 from api.deps import get_store, get_settings
 from categorizer.ai_categorizer import AiCategorizer
-from categorizer.rule_categorizer import categorize_transaction
+from categorizer.rule_categorizer import categorize_transaction, reload_rules as reload_category_rules
+from categorizer.description_cleaner import reload_rules as reload_clean_rules
 from db.sqlite_store import SqliteStore
 from parser.bank_parser import BankParser
 from parser.normalizer import normalize
@@ -238,3 +241,53 @@ def clear_data(store: SqliteStore = Depends(get_store)):
     """Deletes all stored transactions and import records. Irreversible."""
     result = store.clear_all()
     return {"status": "cleared", **result}
+
+
+# ---------------------------------------------------------------------------
+# POST /recategorize
+# ---------------------------------------------------------------------------
+
+@router.post("/recategorize", response_model=RecategorizeResponse, summary="Re-apply rules to all stored transactions")
+def recategorize(
+    use_ai: bool = Query(False, description="Use Ollama AI for transactions that rules don't match"),
+    settings=Depends(get_settings),
+    store: SqliteStore = Depends(get_store),
+):
+    """
+    Reloads rules from YAML config files and re-applies them to every stored transaction.
+    Useful after editing category_rules.yaml or clean_description_rules.yaml.
+    Pass use_ai=true to also run Ollama for unmatched descriptions.
+    """
+    # Reload rules from disk so edits take effect without restarting the server
+    reload_category_rules()
+    reload_clean_rules()
+
+    rows = store.get_all_descriptions()
+    if not rows:
+        return RecategorizeResponse(updated=0, category_sources={}, clean_description_sources={})
+
+    if use_ai:
+        ai = AiCategorizer(
+            ollama_url=settings.ollama_url,
+            model=settings.ollama_model,
+            cache_path=settings.data_dir / "category_cache.db",
+        )
+        categorized = [ai.categorize_transaction(row) for row in rows]
+    else:
+        categorized = [categorize_transaction(row) for row in rows]
+
+    updated = store.bulk_update_categories(categorized)
+
+    cat_sources: dict[str, int] = {}
+    clean_sources: dict[str, int] = {}
+    for tx in categorized:
+        cs = tx.get("category_source") or "unknown"
+        cat_sources[cs] = cat_sources.get(cs, 0) + 1
+        ds = tx.get("clean_description_source") or "none"
+        clean_sources[ds] = clean_sources.get(ds, 0) + 1
+
+    return RecategorizeResponse(
+        updated=updated,
+        category_sources=cat_sources,
+        clean_description_sources=clean_sources,
+    )

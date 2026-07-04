@@ -127,6 +127,38 @@ class SqliteStore:
                 (category, subcategory, source, tx_id),
             )
 
+    def bulk_update_categories(self, updates: list[dict]) -> int:
+        """
+        Apply category + clean_description updates to multiple transactions at once.
+        Each dict must have: id, category, subcategory, category_source,
+                             clean_description, clean_description_source.
+        Returns the number of rows updated.
+        """
+        updated = 0
+        with self._connect() as conn:
+            for u in updates:
+                result = conn.execute(
+                    """UPDATE transactions
+                       SET category=?, subcategory=?, category_source=?,
+                           clean_description=?, clean_description_source=?
+                       WHERE id=?""",
+                    (
+                        u["category"], u["subcategory"], u["category_source"],
+                        u.get("clean_description"), u.get("clean_description_source"),
+                        u["id"],
+                    ),
+                )
+                updated += result.rowcount
+        return updated
+
+    def get_all_descriptions(self) -> list[dict]:
+        """Returns id + description for every transaction — used by recategorize."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, description FROM transactions ORDER BY date DESC"
+            ).fetchall()
+        return [{"id": r[0], "description": r[1]} for r in rows]
+
     # ------------------------------------------------------------------
     # Transactions — read
     # ------------------------------------------------------------------

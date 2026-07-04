@@ -112,3 +112,13 @@ class HealthCheckResponse(BaseModel):
     db_path: str
     available_months: list[str]
     total_transactions: int
+
+
+# ---------------------------------------------------------------------------
+# Recategorize
+# ---------------------------------------------------------------------------
+
+class RecategorizeResponse(BaseModel):
+    updated: int
+    category_sources: dict[str, int]
+    clean_description_sources: dict[str, int]
