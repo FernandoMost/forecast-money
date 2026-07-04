@@ -28,7 +28,6 @@ def normalize(raw: RawTransaction, bank_id: str) -> dict[str, Any]:
         amount          — signed float (negative = debit, positive = credit)
         balance         — running balance after this transaction
         currency        — ISO currency code
-        transaction_type— detected type from YAML patterns
         is_reversal     — bool
         category        — None (filled later by categorizer)
         category_source — None (filled later: 'rule' | 'ai' | 'cache')
@@ -46,7 +45,6 @@ def normalize(raw: RawTransaction, bank_id: str) -> dict[str, Any]:
         "amount": round(raw.amount, 2),
         "balance": round(raw.balance, 2),
         "currency": raw.currency,
-        "transaction_type": raw.transaction_type,
         "is_reversal": raw.is_reversal,
         "category": None,
         "category_source": None,

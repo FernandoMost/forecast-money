@@ -41,7 +41,6 @@ class RawTransaction:
     amount: float
     balance: float
     currency: str
-    transaction_type: str       # detected from YAML patterns
     is_reversal: bool
     row_index: int              # original spreadsheet row (1-based), useful for debugging
 
@@ -119,10 +118,6 @@ class BankParser:
         sheet_cfg = cfg["sheet"]
         col_cfg = cfg["columns"]
         parse_cfg = cfg["parsing"]
-        type_patterns = [
-            (t["id"], re.compile(t["pattern"], re.IGNORECASE))
-            for t in cfg.get("transaction_types", [])
-        ]
 
         data_start = sheet_cfg["data_start_row"]
         date_fmt = parse_cfg["date_format"]
@@ -154,7 +149,6 @@ class BankParser:
                 amount = self._parse_amount(raw_amount)
                 balance = self._parse_amount(raw_balance) if raw_balance else 0.0
 
-                tx_type = self._detect_type(description, type_patterns)
                 is_reversal = description.upper().startswith(reversal_prefix)
 
                 transactions.append(RawTransaction(
@@ -164,7 +158,6 @@ class BankParser:
                     amount=amount,
                     balance=balance,
                     currency=currency,
-                    transaction_type=tx_type,
                     is_reversal=is_reversal,
                     row_index=row_num,
                 ))
@@ -189,10 +182,3 @@ class BankParser:
         cleaned = cleaned.replace(dec_sep, ".")
         value = float(cleaned)
         return -value if is_negative else value
-
-    @staticmethod
-    def _detect_type(description: str, patterns: list[tuple[str, re.Pattern]]) -> str:
-        for type_id, pattern in patterns:
-            if pattern.search(description):
-                return type_id
-        return "unknown"

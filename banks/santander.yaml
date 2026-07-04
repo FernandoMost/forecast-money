@@ -47,30 +47,3 @@ parsing:
   reversal_prefix: "ANULACION"
   # Minimum non-null columns for a row to be considered a valid transaction
   min_valid_columns: 4
-
-# Transaction type detection — matched against the Concepto field (case-insensitive)
-transaction_types:
-  - id: "card_mobile"
-    pattern: "^PAGO MOVIL EN"
-  - id: "card_online"
-    pattern: "^COMPRA INTERNET EN"
-  - id: "card_physical"
-    pattern: "^COMPRA "
-  - id: "direct_debit"
-    pattern: "^RECIBO "
-  - id: "bizum_out"
-    pattern: "^BIZUM A FAVOR DE"
-  - id: "bizum_in"
-    pattern: "^BIZUM DE"
-  - id: "transfer_out"
-    pattern: "^TRANSFERENCIA A FAVOR DE"
-  - id: "transfer_in"
-    pattern: "^TRANSFERENCIA DE "
-  - id: "transfer_instant"
-    pattern: "^TRANSFERENCIA INMEDIATA"
-  - id: "atm"
-    pattern: "^RETIRADA DE EFECTIVO"
-  - id: "reversal"
-    pattern: "^ANULACION"
-  - id: "payroll"
-    pattern: "(?:NOMINA|SALARIO|SUELDO)"

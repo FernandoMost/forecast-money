@@ -49,7 +49,6 @@ export interface Transaction {
   amount: number;
   balance: number;
   currency: string;
-  transaction_type: string | null;
   is_reversal: boolean;
   category: string | null;
   subcategory: string | null;

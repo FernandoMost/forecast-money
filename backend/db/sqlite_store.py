@@ -51,7 +51,6 @@ class SqliteStore:
                     amount           REAL NOT NULL,
                     balance          REAL NOT NULL,
                     currency         TEXT NOT NULL DEFAULT 'EUR',
-                    transaction_type TEXT,
                     is_reversal      INTEGER NOT NULL DEFAULT 0,
                     category         TEXT,
                     subcategory      TEXT,
@@ -98,15 +97,14 @@ class SqliteStore:
                 result = conn.execute(
                     """INSERT OR IGNORE INTO transactions
                        (id, import_id, bank_id, date, date_value, description, amount, balance,
-                        currency, transaction_type, is_reversal, category, subcategory,
+                        currency, is_reversal, category, subcategory,
                         category_source, month, year, raw_json)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         tx["id"], import_id, tx["bank_id"],
                         tx["date"], tx["date_value"],
                         tx["description"], tx["amount"], tx["balance"],
                         tx.get("currency", "EUR"),
-                        tx.get("transaction_type"),
                         1 if tx.get("is_reversal") else 0,
                         tx.get("category"), tx.get("subcategory"),
                         tx.get("category_source"),
@@ -152,7 +150,7 @@ class SqliteStore:
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         query = f"""
             SELECT id, bank_id, date, date_value, description, amount, balance,
-                   currency, transaction_type, is_reversal, category, subcategory,
+                   currency, is_reversal, category, subcategory,
                    category_source, month, year
             FROM transactions
             {where}
@@ -165,7 +163,7 @@ class SqliteStore:
             rows = conn.execute(query, params).fetchall()
 
         cols = ["id", "bank_id", "date", "date_value", "description", "amount",
-                "balance", "currency", "transaction_type", "is_reversal",
+                "balance", "currency", "is_reversal",
                 "category", "subcategory", "category_source", "month", "year"]
         return [dict(zip(cols, r)) for r in rows]
 

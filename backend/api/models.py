@@ -56,7 +56,6 @@ class Transaction(BaseModel):
     amount: float
     balance: float
     currency: str
-    transaction_type: str | None
     is_reversal: bool
     category: str | None
     subcategory: str | None
