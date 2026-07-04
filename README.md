@@ -2,7 +2,7 @@
 
 > Privacy-first personal finance analyzer — all data stays on your machine by default.
 
-Built a privacy-first personal finance analyzer in Python/FastAPI that parses real Santander España bank exports, categorizes transactions using local LLM inference via Ollama (llama3) with SQLite deduplication cache, and applies seven financial health rules (savings rate, emergency fund, subscription cap, 50/30/20, lifestyle inflation) to produce a 0–100 health score and prioritized alert list. Exposed via a REST API consumed by a Next.js dashboard. Deployed to GCP Cloud Run with GitHub Actions CI/CD; optional MongoDB Atlas persistence layer switchable via env flag. All data stays local by default — zero external calls without explicit opt-in.
+Built a privacy-first personal finance analyzer in Python/FastAPI that parses real Santander España bank exports, categorizes transactions using local LLM inference via Ollama (llama3) with SQLite deduplication cache, and applies seven financial health rules (savings rate, emergency fund, subscription cap, 50/30/20, lifestyle inflation) to produce a 0–100 health score and prioritized alert list. Exposed via a REST API consumed by a Next.js dashboard. All data stays local — zero external calls.
 
 ---
 
@@ -17,16 +17,14 @@ finance-analyzer/
 │   ├── categorizer/          # Rule-based + Ollama AI categorization with SQLite cache
 │   ├── rules/                # 7 financial health rules → 0-100 score
 │   ├── api/                  # FastAPI routes + Pydantic models
-│   ├── db/                   # SqliteStore (local) + MongoStore (cloud, opt-in)
+│   ├── db/                   # SqliteStore
 │   ├── etl.py                # CLI entry point
 │   └── main.py               # FastAPI application
 ├── frontend/                 # Next.js dashboard (Dashboard, Transactions, Trends, Upload)
 ├── docker/
 │   ├── Dockerfile.backend
 │   └── Dockerfile.frontend
-├── docker-compose.yml
-├── cloudbuild.yaml           # GCP Cloud Build config
-└── .github/workflows/ci.yml  # GitHub Actions CI/CD
+└── docker-compose.yml
 ```
 
 ---
@@ -103,31 +101,6 @@ No code changes required.
 
 ---
 
-## Cloud Mode (Phase 5)
-
-Set `MONGO_URI` in your environment to switch from SQLite to MongoDB Atlas:
-
-```bash
-export MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/finance_analyzer
-uvicorn main:app --reload
-```
-
-### Docker
-
-```bash
-docker-compose up --build
-```
-
-### GCP Cloud Run
-
-```bash
-gcloud builds submit --config=cloudbuild.yaml
-```
-
-GitHub Actions CI/CD deploys to Cloud Run automatically on push to `main` when `ENABLE_GCP_DEPLOY=true` is set as a repository variable and `GOOGLE_CREDENTIALS` secret is configured.
-
----
-
 ## Privacy
 
 - **Local mode is the default.** No data leaves your machine.
@@ -146,6 +119,5 @@ GitHub Actions CI/CD deploys to Cloud Run automatically on push to `main` when `
 | Data parsing | openpyxl, PyYAML (config-driven) |
 | AI categorization | Ollama + llama3 (local) |
 | Local DB | SQLite via stdlib |
-| Cloud DB (opt-in) | MongoDB Atlas (pymongo + motor) |
 | Frontend | Next.js 14, TypeScript, Tailwind CSS, Recharts |
-| DevOps | Docker, GitHub Actions, GCP Cloud Run, Cloud Build |
+| DevOps | Docker |

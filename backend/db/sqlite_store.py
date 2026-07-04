@@ -3,7 +3,6 @@ db/sqlite_store.py
 
 Local SQLite persistence layer.
 Stores normalized, categorized transactions and import sessions.
-Used in local mode (default). MongoDB is introduced only in Phase 5.
 """
 
 from __future__ import annotations

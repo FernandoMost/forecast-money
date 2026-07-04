@@ -20,10 +20,7 @@ from api.routes import router
 
 app = FastAPI(
     title="Finance Analyzer API",
-    description=(
-        "Privacy-first personal finance analyzer. "
-        "All data stays local unless cloud mode is explicitly enabled."
-    ),
+    description="Privacy-first personal finance analyzer. All data stays local.",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",

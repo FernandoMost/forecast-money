@@ -12,10 +12,6 @@ services:
     environment:
       DB_PATH: /app/backend/data/finance.db
       DATA_DIR: /app/backend/data
-      # Uncomment and set to enable MongoDB Atlas cloud mode:
-      # MONGO_URI: mongodb+srv://user:pass@cluster.mongodb.net/finance
-      # Uncomment to use Claude API as AI fallback (never the default):
-      # CLAUDE_API_KEY: sk-...
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
