@@ -44,11 +44,14 @@ finance-analyzer/
 cd backend
 pip install -r requirements.txt
 
-# Run ETL on your bank statement (rule-based categorization)
-python etl.py ../sample_export.xlsx
+# Run ETL — defaults to banks/santander.yaml if --bank is omitted
+python etl.py ../statement.xlsx
+
+# Specify a different bank config (maps to banks/mybank.yaml)
+python etl.py ../statement.csv --bank mybank
 
 # With AI categorization (requires Ollama running locally)
-python etl.py ../sample_export.xlsx --use-ai
+python etl.py ../statement.xlsx --use-ai
 
 # Start the API server
 uvicorn main:app --reload --port 8000
@@ -95,41 +98,30 @@ npm run dev
 
 ## Adding a New Bank
 
-The parser supports both **xlsx** and **csv** formats. All structural knowledge about a bank's file layout lives in a single YAML config — no code changes required.
-
-### Reference files
+Supports both **xlsx** and **csv**. All structural knowledge lives in a YAML config — no code changes needed.
 
 | File | Purpose |
 |------|---------|
-| `banks/sample_bank.csv` | Minimal fictional bank statement — use it to understand the expected column structure |
-| `banks/sample_bank.yaml` | Fully commented YAML that maps the CSV above — **start here when adding a new bank** |
-| `banks/santander.yaml` | Real-world xlsx example with metadata rows above the transaction table |
+| `banks/sample_bank.csv` | Minimal fictional statement — reference for the expected column layout |
+| `banks/sample_bank.yaml` | Annotated reference config — start here |
+| `banks/santander.yaml` | Real xlsx example with metadata rows above the transaction table |
 
-### Steps
+```bash
+cp banks/sample_bank.yaml banks/mybank.yaml
+# edit banks/mybank.yaml, then:
+python etl.py statement.csv --bank mybank
+```
 
-1. Export your bank statement (xlsx or csv).
-2. Open `banks/sample_bank.yaml` — every field is documented with inline comments.
-3. Copy it: `cp banks/sample_bank.yaml banks/mybank.yaml`
-4. Edit `banks/mybank.yaml`:
-   - Set `file.extension` to `csv` or `xlsx`
-   - Set `sheet.header_row` and `sheet.data_start_row` to match your file layout
-   - Map each column index under `columns` (1-based)
-   - Adjust `parsing.date_format`, `amount_decimal_separator`, and `amount_strip_pattern`
-   - For **xlsx** files with metadata above the table, add a `sheet.metadata` block (see `banks/santander.yaml`)
-5. Run the ETL: `python etl.py statement.csv --bank mybank`
+Key fields to adjust:
 
-### Key YAML fields
-
-| Field | Description |
-|-------|-------------|
-| `bank.id` | Identifier stored in the DB — lowercase, no spaces |
+| Field | Notes |
+|-------|-------|
 | `file.extension` | `csv` or `xlsx` |
-| `sheet.header_row` | 1-based row with column headers (rows above it are skipped) |
-| `sheet.data_start_row` | 1-based row where transactions begin |
+| `sheet.header_row` / `data_start_row` | 1-based; rows above `header_row` are skipped |
 | `columns.*` | 1-based column index for each logical field |
-| `parsing.date_format` | Python `strptime` string, e.g. `%Y-%m-%d` or `%d/%m/%Y` |
-| `parsing.amount_decimal_separator` | `.` for English format, `,` for Spanish/EU format |
-| `parsing.reversal_prefix` | Transactions starting with this are flagged as reversals |
+| `parsing.date_format` | `strptime` string — e.g. `%Y-%m-%d`, `%d/%m/%Y` |
+| `parsing.amount_decimal_separator` | `.` or `,` |
+| `sheet.metadata` | xlsx only — extract account/balance from cells above the table (see `santander.yaml`) |
 
 ---
 
