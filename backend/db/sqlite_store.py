@@ -257,6 +257,96 @@ class SqliteStore:
         """Returns all non-reversal transactions for the health engine."""
         return self.get_transactions(limit=100_000)
 
+    def get_latest_transaction_date(self) -> str | None:
+        """Returns the date string (YYYY-MM-DD) of the most recent transaction, or None."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT MAX(date) FROM transactions WHERE is_reversal = 0"
+            ).fetchone()
+        return row[0] if row and row[0] else None
+
+    def get_dashboard_month_summary(self, month: str) -> dict:
+        """
+        Extended monthly summary for the dashboard.
+        Adds: days_of_data (days between first and last tx in the month),
+        last_balance (balance of the most recent transaction in the month),
+        last_balance_date, and leisure_spent (restaurants + entertainment).
+        """
+        with self._connect() as conn:
+            agg = conn.execute("""
+                SELECT
+                    COUNT(*)                                              as tx_count,
+                    SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END)     as total_income,
+                    SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END)     as total_expenses,
+                    MIN(balance)                                          as min_balance,
+                    MAX(balance)                                          as max_balance,
+                    MIN(date)                                             as first_date,
+                    MAX(date)                                             as last_date
+                FROM transactions
+                WHERE month = ? AND is_reversal = 0
+            """, (month,)).fetchone()
+
+            # Balance of the very last transaction in this month
+            last_row = conn.execute("""
+                SELECT balance, date FROM transactions
+                WHERE month = ? AND is_reversal = 0
+                ORDER BY date DESC, rowid DESC
+                LIMIT 1
+            """, (month,)).fetchone()
+
+            # Leisure = restaurants + entertainment
+            leisure_row = conn.execute("""
+                SELECT COALESCE(SUM(ABS(amount)), 0)
+                FROM transactions
+                WHERE month = ? AND is_reversal = 0
+                  AND amount < 0
+                  AND category IN ('restaurants', 'entertainment')
+            """, (month,)).fetchone()
+
+            by_category = conn.execute("""
+                SELECT category, SUM(amount) as total, COUNT(*) as count
+                FROM transactions
+                WHERE month = ? AND is_reversal = 0
+                GROUP BY category
+                ORDER BY total ASC
+            """, (month,)).fetchall()
+
+        income = round(agg[1] or 0.0, 2)
+        expenses = round(abs(agg[2] or 0.0), 2)
+        savings = round(income - expenses, 2)
+        first_date = agg[5]
+        last_date = agg[6]
+
+        # days_of_data: span of dates in this month's data
+        days_of_data = 0
+        if first_date and last_date:
+            from datetime import date as _date
+            d0 = _date.fromisoformat(first_date)
+            d1 = _date.fromisoformat(last_date)
+            days_of_data = (d1 - d0).days + 1
+
+        return {
+            "month": month,
+            "tx_count": agg[0] or 0,
+            "total_income": income,
+            "total_expenses": expenses,
+            "net_savings": savings,
+            "drew_from_savings": savings < 0,
+            "savings_rate": round(savings / income * 100, 1) if income > 0 else 0.0,
+            "min_balance": round(agg[3] or 0.0, 2),
+            "max_balance": round(agg[4] or 0.0, 2),
+            "last_balance": round(last_row[0], 2) if last_row else None,
+            "last_balance_date": last_row[1] if last_row else None,
+            "leisure_spent": round(leisure_row[0] or 0.0, 2),
+            "days_of_data": days_of_data,
+            "first_date": first_date,
+            "last_date": last_date,
+            "by_category": [
+                {"category": r[0], "total": round(r[1], 2), "count": r[2]}
+                for r in by_category
+            ],
+        }
+
     def clear_all(self) -> dict:
         """Deletes all transactions and imports. Returns counts of deleted rows."""
         with self._connect() as conn:

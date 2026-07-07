@@ -2,7 +2,8 @@
 api/routes.py — FastAPI route handlers.
 
 Endpoints:
-  POST   /upload                — Upload a bank statement xlsx
+  POST   /upload                — Upload a bank statement xlsx/csv
+  GET    /dashboard             — Dashboard: health score + current/last month enriched summaries
   GET    /summary/{month}       — Monthly financial summary
   GET    /transactions          — Paginated + filtered transaction list
   GET    /health-score          — Full 7-rule health analysis
@@ -14,8 +15,10 @@ Endpoints:
 
 from __future__ import annotations
 
+import calendar
 import tempfile
 import uuid
+from datetime import date as _date
 from pathlib import Path
 from typing import Annotated
 
@@ -23,8 +26,10 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import JSONResponse
 
 from api.models import (
+    DashboardResponse,
     HealthCheckResponse,
     HealthScoreResponse,
+    MonthSummaryForDashboard,
     MonthlySummary,
     RecategorizeResponse,
     TransactionList,
@@ -48,22 +53,23 @@ router = APIRouter()
 
 @router.post("/upload", response_model=UploadResponse, summary="Upload a bank statement Excel file")
 async def upload_statement(
-    file: UploadFile = File(..., description="Bank statement .xlsx export"),
+    file: UploadFile = File(..., description="Bank statement .xlsx or .csv export"),
     bank: str = Form(default="santander", description="Bank config name (without .yaml)"),
     use_ai: bool = Form(default=False, description="Use Ollama AI categorizer"),
     settings=Depends(get_settings),
     store: SqliteStore = Depends(get_store),
 ):
-    if not file.filename or not file.filename.endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="Only .xlsx files are accepted.")
+    fname = file.filename or ""
+    if not fname.endswith((".xlsx", ".csv")):
+        raise HTTPException(status_code=400, detail="Only .xlsx and .csv files are accepted.")
 
     banks_dir = Path(__file__).parent.parent.parent / "banks"
     bank_config = banks_dir / f"{bank}.yaml"
     if not bank_config.exists():
         raise HTTPException(status_code=400, detail=f"Unknown bank config: '{bank}'. Available: {[p.stem for p in banks_dir.glob('*.yaml')]}")
 
-    # Save upload to temp file
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+    suffix = ".csv" if fname.endswith(".csv") else ".xlsx"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         content = await file.read()
         tmp.write(content)
         tmp_path = Path(tmp.name)
@@ -111,6 +117,135 @@ async def upload_statement(
         )
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard
+# ---------------------------------------------------------------------------
+
+def _build_month_summary(raw: dict, today: _date) -> MonthSummaryForDashboard:
+    """
+    Enriches a get_dashboard_month_summary() dict with leisure budget and
+    pace/projection fields (only meaningful for the current partial month).
+    """
+    income = raw["total_income"]
+    leisure_budget = round(income * 0.20, 2)
+    leisure_spent = raw["leisure_spent"]
+    leisure_remaining = round(leisure_budget - leisure_spent, 2)
+
+    # Pace fields — only computed when month matches the current calendar month
+    month_str = raw["month"]           # YYYY-MM
+    days_elapsed: int | None = None
+    days_in_month: int | None = None
+    projected: float | None = None
+
+    year, mo = int(month_str[:4]), int(month_str[5:7])
+    if year == today.year and mo == today.month:
+        days_elapsed = today.day
+        days_in_month = calendar.monthrange(year, mo)[1]
+        days_of_data = raw["days_of_data"]
+        if days_of_data > 0 and raw["total_expenses"] > 0:
+            projected = round(raw["total_expenses"] / days_of_data * days_in_month, 2)
+
+    return MonthSummaryForDashboard(
+        **{k: v for k, v in raw.items() if k not in ("leisure_budget", "leisure_remaining")},
+        leisure_budget=leisure_budget,
+        leisure_remaining=leisure_remaining,
+        days_elapsed=days_elapsed,
+        days_in_month=days_in_month,
+        projected_month_end_expenses=projected,
+    )
+
+
+@router.get("/dashboard", response_model=DashboardResponse, summary="Dashboard snapshot")
+def get_dashboard(store: SqliteStore = Depends(get_store)):
+    """
+    Single endpoint for the dashboard page.
+    Returns health score + enriched monthly summaries + staleness info.
+
+    Primary/secondary month logic:
+      - If the current calendar month has ≥15 days of transaction data → primary = current month
+      - Otherwise → primary = last full month, secondary = current partial month
+    """
+    all_txs = store.get_all_transactions_for_rules()
+    if not all_txs:
+        raise HTTPException(status_code=404, detail="No transactions found. Upload a statement first.")
+
+    # --- Health score ---
+    sorted_txs = sorted(all_txs, key=lambda t: t["date"], reverse=True)
+    latest_balance = sorted_txs[0].get("balance")
+    engine = HealthEngine(current_balance=latest_balance)
+    health = engine.analyze(all_txs)
+    health_response = HealthScoreResponse(
+        overall_score=health.overall_score,
+        grade=health.grade,
+        months_analyzed=health.months_analyzed,
+        summary=health.summary,
+        rules=[
+            {"rule_id": r.rule_id, "name": r.name, "status": r.status,
+             "score": r.score, "message": r.message, "details": r.details}
+            for r in health.rules
+        ],
+        alerts=[
+            {"rule_id": r.rule_id, "name": r.name, "status": r.status, "message": r.message}
+            for r in health.alerts
+        ],
+    )
+
+    # --- Staleness ---
+    last_tx_date_str = store.get_latest_transaction_date()
+    today = _date.today()
+    days_since = 0
+    if last_tx_date_str:
+        last_tx_date = _date.fromisoformat(last_tx_date_str)
+        days_since = (today - last_tx_date).days
+
+    # --- Available months ---
+    available_months = store.get_available_months()   # DESC order
+    current_month_str = today.strftime("%Y-%m")
+
+    # --- Current month data (may be empty) ---
+    current_raw = (
+        store.get_dashboard_month_summary(current_month_str)
+        if current_month_str in available_months
+        else None
+    )
+
+    # --- Last full month (most recent month that is not the current calendar month) ---
+    last_full_month_str = next(
+        (m for m in available_months if m != current_month_str), None
+    )
+    last_full_raw = (
+        store.get_dashboard_month_summary(last_full_month_str)
+        if last_full_month_str
+        else None
+    )
+
+    # --- Primary / secondary decision ---
+    current_days_of_data = current_raw["days_of_data"] if current_raw else 0
+    primary_is_current = current_days_of_data >= 15
+
+    if primary_is_current:
+        primary_raw = current_raw
+        secondary_raw = last_full_raw
+    else:
+        primary_raw = last_full_raw
+        secondary_raw = current_raw
+
+    if primary_raw is None:
+        raise HTTPException(status_code=404, detail="No monthly data available.")
+
+    primary = _build_month_summary(primary_raw, today)
+    secondary = _build_month_summary(secondary_raw, today) if secondary_raw else None
+
+    return DashboardResponse(
+        last_transaction_date=last_tx_date_str,
+        days_since_last_update=days_since,
+        primary_month=primary,
+        secondary_month=secondary,
+        primary_is_current=primary_is_current,
+        health=health_response,
+    )
 
 
 # ---------------------------------------------------------------------------

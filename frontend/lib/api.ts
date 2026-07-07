@@ -112,6 +112,42 @@ export interface RecategorizeResponse {
   clean_description_sources: Record<string, number>;
 }
 
+// --- Dashboard types ---
+
+export interface MonthSummaryForDashboard {
+  month: string;
+  tx_count: number;
+  total_income: number;
+  total_expenses: number;
+  net_savings: number;
+  drew_from_savings: boolean;
+  savings_rate: number;
+  min_balance: number;
+  max_balance: number;
+  last_balance: number | null;
+  last_balance_date: string | null;
+  leisure_spent: number;
+  leisure_budget: number;
+  leisure_remaining: number;
+  days_of_data: number;
+  first_date: string | null;
+  last_date: string | null;
+  // pace — only present for current partial month
+  days_elapsed: number | null;
+  days_in_month: number | null;
+  projected_month_end_expenses: number | null;
+  by_category: CategoryBreakdown[];
+}
+
+export interface DashboardData {
+  last_transaction_date: string | null;
+  days_since_last_update: number;
+  primary_month: MonthSummaryForDashboard;
+  secondary_month: MonthSummaryForDashboard | null;
+  primary_is_current: boolean;
+  health: HealthScore;
+}
+
 // --- API calls ---
 
 export const api = {
@@ -119,6 +155,7 @@ export const api = {
   months: () => get<{ months: string[] }>("/months"),
   summary: (month: string) => get<MonthlySummary>(`/summary/${month}`),
   healthScore: () => get<HealthScore>("/health-score"),
+  dashboard: () => get<DashboardData>("/dashboard"),
   transactions: (params?: { month?: string; category?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
     if (params?.month) qs.set("month", params.month);
