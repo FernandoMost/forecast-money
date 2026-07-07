@@ -11,7 +11,9 @@ Built a privacy-first personal finance analyzer in Python/FastAPI that parses re
 ```
 finance-analyzer/
 ├── banks/
-│   └── santander.yaml        # Column mapping config — add new banks without touching code
+│   ├── sample_bank.csv       # Fictional bank statement — reference for the column structure
+│   ├── sample_bank.yaml      # Fully commented reference config — start here for new banks
+│   └── santander.yaml        # Real xlsx example with metadata rows
 ├── backend/
 │   ├── parser/               # Config-driven Excel ETL
 │   ├── categorizer/          # Rule-based + Ollama AI categorization with SQLite cache
@@ -68,7 +70,7 @@ npm run dev
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/upload` | Upload a `.xlsx` bank statement |
+| `POST` | `/api/v1/upload` | Upload a `.xlsx` or `.csv` bank statement |
 | `GET` | `/api/v1/summary/{month}` | Monthly income/expenses/savings breakdown |
 | `GET` | `/api/v1/transactions` | Paginated + filtered transaction list |
 | `GET` | `/api/v1/health-score` | 7-rule health analysis → 0-100 score |
@@ -93,11 +95,41 @@ npm run dev
 
 ## Adding a New Bank
 
-1. Copy `banks/santander.yaml` → `banks/mybank.yaml`
-2. Adjust `header_row`, `data_start_row`, column indices, date format, and amount parsing config
-3. Run: `python etl.py export.xlsx --bank mybank`
+The parser supports both **xlsx** and **csv** formats. All structural knowledge about a bank's file layout lives in a single YAML config — no code changes required.
 
-No code changes required.
+### Reference files
+
+| File | Purpose |
+|------|---------|
+| `banks/sample_bank.csv` | Minimal fictional bank statement — use it to understand the expected column structure |
+| `banks/sample_bank.yaml` | Fully commented YAML that maps the CSV above — **start here when adding a new bank** |
+| `banks/santander.yaml` | Real-world xlsx example with metadata rows above the transaction table |
+
+### Steps
+
+1. Export your bank statement (xlsx or csv).
+2. Open `banks/sample_bank.yaml` — every field is documented with inline comments.
+3. Copy it: `cp banks/sample_bank.yaml banks/mybank.yaml`
+4. Edit `banks/mybank.yaml`:
+   - Set `file.extension` to `csv` or `xlsx`
+   - Set `sheet.header_row` and `sheet.data_start_row` to match your file layout
+   - Map each column index under `columns` (1-based)
+   - Adjust `parsing.date_format`, `amount_decimal_separator`, and `amount_strip_pattern`
+   - For **xlsx** files with metadata above the table, add a `sheet.metadata` block (see `banks/santander.yaml`)
+5. Run the ETL: `python etl.py statement.csv --bank mybank`
+
+### Key YAML fields
+
+| Field | Description |
+|-------|-------------|
+| `bank.id` | Identifier stored in the DB — lowercase, no spaces |
+| `file.extension` | `csv` or `xlsx` |
+| `sheet.header_row` | 1-based row with column headers (rows above it are skipped) |
+| `sheet.data_start_row` | 1-based row where transactions begin |
+| `columns.*` | 1-based column index for each logical field |
+| `parsing.date_format` | Python `strptime` string, e.g. `%Y-%m-%d` or `%d/%m/%Y` |
+| `parsing.amount_decimal_separator` | `.` for English format, `,` for Spanish/EU format |
+| `parsing.reversal_prefix` | Transactions starting with this are flagged as reversals |
 
 ---
 
@@ -116,7 +148,7 @@ No code changes required.
 | Layer | Technology |
 |-------|------------|
 | ETL / Backend | Python 3.12, FastAPI, Pydantic v2 |
-| Data parsing | openpyxl, PyYAML (config-driven) |
+| Data parsing | openpyxl (xlsx), csv stdlib (csv), PyYAML (config-driven) |
 | AI categorization | Ollama + llama3 (local) |
 | Local DB | SQLite via stdlib |
 | Frontend | Next.js 14, TypeScript, Tailwind CSS, Recharts |

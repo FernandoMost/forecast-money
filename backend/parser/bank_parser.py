@@ -1,13 +1,15 @@
 """
 parser/bank_parser.py
 
-Config-driven Excel parser for bank statements.
+Config-driven parser for bank statements.
 Reads column mappings from a YAML file (e.g. banks/santander.yaml).
+Supports both xlsx and csv file formats — controlled via `file.extension` in the YAML.
 Zero hardcoded column logic here — all structural knowledge lives in the YAML.
 """
 
 from __future__ import annotations
 
+import csv
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -58,8 +60,12 @@ class ParseResult:
 
 class BankParser:
     """
-    Reads a bank statement Excel file using column mappings from a YAML config.
-    Supports any bank that exports to xlsx by providing its own YAML.
+    Reads a bank statement file using column mappings from a YAML config.
+    Supports xlsx and csv formats — set `file.extension` in the YAML accordingly.
+
+    xlsx: full support including optional metadata rows above the transaction table.
+    csv : metadata fields (account_number, account_holder, current_balance, export_date)
+          are left as None; only bank_id, bank_name and currency are populated.
     """
 
     def __init__(self, config_path: str | Path):
@@ -70,6 +76,16 @@ class BankParser:
     # ------------------------------------------------------------------
 
     def parse(self, file_path: str | Path) -> ParseResult:
+        extension = self._cfg.get("file", {}).get("extension", "xlsx").lower()
+        if extension == "csv":
+            return self._parse_csv(Path(file_path))
+        return self._parse_xlsx(Path(file_path))
+
+    # ------------------------------------------------------------------
+    # Format-specific parse methods
+    # ------------------------------------------------------------------
+
+    def _parse_xlsx(self, file_path: Path) -> ParseResult:
         wb = openpyxl.load_workbook(str(file_path), data_only=True, read_only=True)
         sheet_cfg = self._cfg["sheet"]
         ws = wb.worksheets[sheet_cfg["index"]]
@@ -78,6 +94,84 @@ class BankParser:
         transactions, warnings = self._extract_transactions(ws)
 
         wb.close()
+        return ParseResult(
+            metadata=metadata,
+            transactions=transactions,
+            parse_warnings=warnings,
+        )
+
+    def _parse_csv(self, file_path: Path) -> ParseResult:
+        cfg = self._cfg
+        sheet_cfg = cfg["sheet"]
+        col_cfg = cfg["columns"]
+        parse_cfg = cfg["parsing"]
+
+        data_start = sheet_cfg["data_start_row"]
+        date_fmt = parse_cfg["date_format"]
+        reversal_prefix = parse_cfg.get("reversal_prefix", "ANULACION").upper()
+        min_cols = parse_cfg.get("min_valid_columns", 3)
+        encoding = cfg["bank"].get("encoding", "utf-8")
+
+        transactions: list[RawTransaction] = []
+        warnings: list[str] = []
+
+        with file_path.open(newline="", encoding=encoding) as fh:
+            reader = csv.reader(fh)
+            for row_num, row in enumerate(reader, start=1):
+                # Skip rows before data_start (header row(s), blank lines, etc.)
+                if row_num < data_start:
+                    continue
+
+                # Skip rows that don't have enough populated columns
+                non_null = sum(1 for v in row if v.strip())
+                if non_null < min_cols:
+                    continue
+
+                try:
+                    def col(idx: int) -> str:
+                        return row[idx - 1].strip() if len(row) >= idx else ""
+
+                    raw_date_op = col(col_cfg["date_operation"])
+                    raw_date_val = col(col_cfg.get("date_value", col_cfg["date_operation"]))
+                    description = col(col_cfg["description"])
+                    raw_amount = col(col_cfg["amount"])
+                    raw_balance = col(col_cfg["balance"]) if "balance" in col_cfg else ""
+                    currency = col(col_cfg["currency"]) if "currency" in col_cfg else cfg["bank"]["currency"]
+                    if not currency:
+                        currency = cfg["bank"]["currency"]
+
+                    if not raw_date_op or not description or not raw_amount:
+                        continue
+
+                    date_op = datetime.strptime(raw_date_op, date_fmt).date()
+                    date_val = datetime.strptime(raw_date_val, date_fmt).date() if raw_date_val else date_op
+                    amount = self._parse_amount(raw_amount)
+                    balance = self._parse_amount(raw_balance) if raw_balance else 0.0
+
+                    is_reversal = description.upper().startswith(reversal_prefix)
+
+                    transactions.append(RawTransaction(
+                        date_operation=date_op,
+                        date_value=date_val,
+                        description=description,
+                        amount=amount,
+                        balance=balance,
+                        currency=currency,
+                        is_reversal=is_reversal,
+                        row_index=row_num,
+                    ))
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"Row {row_num}: skipped — {exc}")
+
+        metadata = BankMetadata(
+            bank_id=cfg["bank"]["id"],
+            bank_name=cfg["bank"]["name"],
+            account_number=None,
+            account_holder=None,
+            current_balance=None,
+            export_date=None,
+            currency=cfg["bank"]["currency"],
+        )
         return ParseResult(
             metadata=metadata,
             transactions=transactions,
@@ -167,9 +261,11 @@ class BankParser:
         return transactions, warnings
 
     def _parse_amount(self, raw: str) -> float:
-        """Convert Spanish-locale amount string to float.
-        '-14,50€' -> -14.50
-        '3.411,06€' -> 3411.06
+        """Convert a locale-formatted amount string to float.
+
+        Examples:
+          Spanish locale (decimal=','): '-14,50€' -> -14.50, '3.411,06€' -> 3411.06
+          English locale (decimal='.'): '-14.50'  -> -14.50, '1,234.56' -> 1234.56
         """
         parse_cfg = self._cfg["parsing"]
         strip_pat = parse_cfg["amount_strip_pattern"]
@@ -177,8 +273,9 @@ class BankParser:
 
         is_negative = raw.strip().startswith("-")
         cleaned = re.sub(strip_pat, "", raw.replace("-", ""))
-        # Also strip any remaining non-numeric, non-comma chars (e.g. "EUR" in metadata balance)
-        cleaned = re.sub(r"[^0-9,]", "", cleaned)
+        # Keep only digits and the decimal separator
+        keep = re.escape(dec_sep)
+        cleaned = re.sub(rf"[^0-9{keep}]", "", cleaned)
         cleaned = cleaned.replace(dec_sep, ".")
         value = float(cleaned)
         return -value if is_negative else value

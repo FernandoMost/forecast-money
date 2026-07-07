@@ -1,0 +1,83 @@
+# Sample Bank — CSV export column mapping
+#
+# This is the reference config for getting started with a new bank.
+# It maps the fictional `sample_bank.csv` file included in this directory.
+#
+# HOW TO ADD YOUR OWN BANK
+# ────────────────────────
+# 1. Export your bank statement (xlsx or csv).
+# 2. Copy this file:  cp banks/sample_bank.yaml banks/mybank.yaml
+# 3. Adjust every value below to match your bank's file structure.
+# 4. Run the ETL:     python etl.py statement.csv --bank mybank
+#
+# No code changes required — the parser is fully driven by this YAML.
+#
+# SUPPORTED FORMATS
+# ─────────────────
+#   xlsx — Use for banks that export Excel files (see banks/santander.yaml for a real example).
+#           Supports optional metadata rows above the transaction table (account number,
+#           holder name, balance, export date).
+#   csv  — Use for banks that export plain CSV files (this file).
+#           Metadata fields (account_number, account_holder, current_balance, export_date)
+#           will be blank; only bank_id, bank_name and currency are populated from the YAML.
+
+bank:
+  name: "Sample Bank"           # Human-readable name shown in the UI
+  id: "sample_bank"             # Identifier stored in the DB — use lowercase, no spaces
+  locale: "en_US"               # Used for documentation / future locale-aware formatting
+  currency: "EUR"               # Default currency when the file has no currency column
+  encoding: "utf-8"             # File encoding (utf-8, latin-1, cp1252, …)
+
+file:
+  extension: "csv"              # "csv" or "xlsx"
+
+sheet:
+  # For CSV files, index is ignored.
+  # For xlsx files, index is the 0-based sheet position to read.
+  index: 0
+
+  # header_row: the 1-based row number that contains column headers.
+  # All rows before this are skipped (useful for xlsx files with metadata above the table).
+  # For a plain CSV with headers on row 1, set this to 1.
+  header_row: 1
+
+  # data_start_row: the 1-based row number where actual transaction data begins.
+  # Typically header_row + 1.
+  data_start_row: 2
+
+  # metadata: only relevant for xlsx files that embed account/holder/balance info
+  # in cells above the transaction table (see banks/santander.yaml for a real example).
+  # Leave this block out entirely for CSV files — it is ignored.
+
+columns:
+  # Map each logical field to its 1-based column index.
+  # Open sample_bank.csv to verify: Date=1, Description=2, Amount=3, Balance=4, Currency=5
+  date_operation: 1             # "Date"        — operation date
+  date_value: 1                 # "Date"        — value date (same column if your bank only has one date)
+  description: 2                # "Description" — transaction label
+  amount: 3                     # "Amount"      — positive = credit, negative = debit
+  balance: 4                    # "Balance"     — running account balance after the transaction
+  currency: 5                   # "Currency"    — per-row currency code (e.g. EUR, USD)
+
+parsing:
+  # strptime format string for the date column(s).
+  # sample_bank.csv uses ISO 8601: YYYY-MM-DD
+  # Other common formats: "%d/%m/%Y" (Santander), "%m/%d/%Y" (US), "%d-%m-%Y"
+  date_format: "%Y-%m-%d"
+
+  # Regex of characters to strip from the amount string before parsing.
+  # sample_bank.csv amounts are plain numbers (-52.30), so we only strip whitespace.
+  # For xlsx exports that include currency symbols: '[€$\s\.]' (Santander uses '[€\s\.]')
+  amount_strip_pattern: '\s'
+
+  # The character used as the decimal separator in amount values.
+  # "." for English/US format (1234.56), "," for Spanish/EU format (1234,56)
+  amount_decimal_separator: "."
+
+  # Transactions whose Description starts with this prefix are flagged as reversals.
+  # In sample_bank.csv, row 18 ("REVERSAL SUPERMARKET …") demonstrates this.
+  reversal_prefix: "REVERSAL"
+
+  # Minimum number of non-empty columns for a row to be considered a valid transaction.
+  # Rows below this threshold are silently skipped (catches blank lines, subtotals, etc.)
+  min_valid_columns: 3
