@@ -151,7 +151,55 @@ class SqliteStore:
                 updated += result.rowcount
         return updated
 
-    def get_all_descriptions(self) -> list[dict]:
+    def update_transaction_manual(
+        self,
+        tx_id: str,
+        clean_description: str | None,
+        category: str | None,
+        subcategory: str | None,
+    ) -> bool:
+        """
+        Manually override clean_description and/or category for a single transaction.
+        Sets the corresponding _source fields to 'manual'.
+        Returns True if a row was updated.
+        """
+        with self._connect() as conn:
+            result = conn.execute(
+                """UPDATE transactions
+                   SET clean_description        = ?,
+                       clean_description_source = CASE WHEN ? IS NOT NULL THEN 'manual' ELSE clean_description_source END,
+                       category                 = COALESCE(?, category),
+                       subcategory              = COALESCE(?, subcategory),
+                       category_source          = CASE WHEN ? IS NOT NULL THEN 'manual' ELSE category_source END
+                   WHERE id = ?""",
+                (
+                    clean_description,
+                    clean_description,   # for the CASE
+                    category,
+                    subcategory,
+                    category,            # for the CASE
+                    tx_id,
+                ),
+            )
+        return result.rowcount > 0
+
+    def get_transaction_by_id(self, tx_id: str) -> dict | None:
+        """Returns a single transaction by id, or None if not found."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT id, bank_id, date, date_value, description, clean_description,
+                          clean_description_source, amount, balance, currency, is_reversal,
+                          category, subcategory, category_source, month, year
+                   FROM transactions WHERE id = ?""",
+                (tx_id,),
+            ).fetchone()
+        if not row:
+            return None
+        cols = ["id", "bank_id", "date", "date_value", "description",
+                "clean_description", "clean_description_source",
+                "amount", "balance", "currency", "is_reversal",
+                "category", "subcategory", "category_source", "month", "year"]
+        return dict(zip(cols, row))
         """Returns id + description for every transaction — used by recategorize."""
         with self._connect() as conn:
             rows = conn.execute(
@@ -166,45 +214,68 @@ class SqliteStore:
     def get_transactions(
         self,
         month: str | None = None,
+        year: int | None = None,
         category: str | None = None,
+        subcategory: str | None = None,
         bank_id: str | None = None,
-        limit: int = 1000,
+        limit: int = 100,
         offset: int = 0,
-    ) -> list[dict]:
-        conditions = []
+    ) -> dict:
+        """
+        Returns paginated transactions plus total count and amount_total for the full
+        (unpaginated) query — so the frontend can show accurate pagination and totals.
+        """
+        conditions: list[str] = []
         params: list[Any] = []
 
         if month:
             conditions.append("month = ?")
             params.append(month)
+        elif year:
+            conditions.append("year = ?")
+            params.append(year)
         if category:
             conditions.append("category = ?")
             params.append(category)
+        if subcategory:
+            conditions.append("subcategory = ?")
+            params.append(subcategory)
         if bank_id:
             conditions.append("bank_id = ?")
             params.append(bank_id)
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        query = f"""
-            SELECT id, bank_id, date, date_value, description, clean_description,
-                   clean_description_source, amount, balance,
-                   currency, is_reversal, category, subcategory,
-                   category_source, month, year
-            FROM transactions
-            {where}
-            ORDER BY date DESC
-            LIMIT ? OFFSET ?
-        """
-        params += [limit, offset]
 
         with self._connect() as conn:
-            rows = conn.execute(query, params).fetchall()
+            # Aggregate for total count + total amount (full query, no pagination)
+            agg_row = conn.execute(
+                f"SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM transactions {where}",
+                params,
+            ).fetchone()
+            total_count = agg_row[0]
+            amount_total = round(agg_row[1], 2)
+
+            # Paginated rows
+            rows = conn.execute(
+                f"""
+                SELECT id, bank_id, date, date_value, description, clean_description,
+                       clean_description_source, amount, balance,
+                       currency, is_reversal, category, subcategory,
+                       category_source, month, year
+                FROM transactions
+                {where}
+                ORDER BY date DESC, rowid DESC
+                LIMIT ? OFFSET ?
+                """,
+                params + [limit, offset],
+            ).fetchall()
 
         cols = ["id", "bank_id", "date", "date_value", "description",
                 "clean_description", "clean_description_source",
                 "amount", "balance", "currency", "is_reversal",
                 "category", "subcategory", "category_source", "month", "year"]
-        return [dict(zip(cols, r)) for r in rows]
+        items = [dict(zip(cols, r)) for r in rows]
+        return {"total": total_count, "amount_total": amount_total, "items": items}
 
     def get_available_months(self) -> list[str]:
         with self._connect() as conn:
@@ -254,8 +325,9 @@ class SqliteStore:
         }
 
     def get_all_transactions_for_rules(self) -> list[dict]:
-        """Returns all non-reversal transactions for the health engine."""
-        return self.get_transactions(limit=100_000)
+        """Returns all transactions for the health engine (no pagination)."""
+        result = self.get_transactions(limit=100_000)
+        return result["items"]
 
     def get_latest_transaction_date(self) -> str | None:
         """Returns the date string (YYYY-MM-DD) of the most recent transaction, or None."""

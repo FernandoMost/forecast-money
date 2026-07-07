@@ -31,6 +31,8 @@ from api.models import (
     HealthScoreResponse,
     MonthSummaryForDashboard,
     MonthlySummary,
+    PatchTransactionRequest,
+    PatchTransactionResponse,
     RecategorizeResponse,
     TransactionList,
     UploadResponse,
@@ -275,21 +277,63 @@ def get_monthly_summary(
 @router.get("/transactions", response_model=TransactionList, summary="List transactions")
 def list_transactions(
     month: str | None = Query(None, description="Filter by month (YYYY-MM)"),
+    year: int | None = Query(None, description="Filter by year (ignored when month is set)"),
     category: str | None = Query(None, description="Filter by category"),
+    subcategory: str | None = Query(None, description="Filter by subcategory"),
     bank_id: str | None = Query(None, description="Filter by bank"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     store: SqliteStore = Depends(get_store),
 ):
-    items = store.get_transactions(
-        month=month, category=category, bank_id=bank_id,
-        limit=limit, offset=offset,
+    result = store.get_transactions(
+        month=month, year=year, category=category, subcategory=subcategory,
+        bank_id=bank_id, limit=limit, offset=offset,
     )
-    # Normalize boolean
-    for item in items:
+    for item in result["items"]:
         item["is_reversal"] = bool(item.get("is_reversal"))
 
-    return TransactionList(total=len(items), limit=limit, offset=offset, items=items)
+    return TransactionList(
+        total=result["total"],
+        amount_total=result["amount_total"],
+        limit=limit,
+        offset=offset,
+        items=result["items"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# PATCH /transactions/{id}
+# ---------------------------------------------------------------------------
+
+@router.patch("/transactions/{tx_id}", response_model=PatchTransactionResponse, summary="Manually edit a transaction")
+def patch_transaction(
+    tx_id: str,
+    body: PatchTransactionRequest,
+    store: SqliteStore = Depends(get_store),
+):
+    """
+    Override clean_description and/or category/subcategory for a single transaction.
+    Sets category_source and/or clean_description_source to 'manual'.
+    Only the provided fields are updated; omitted fields are left unchanged.
+    """
+    updated = store.update_transaction_manual(
+        tx_id=tx_id,
+        clean_description=body.clean_description,
+        category=body.category,
+        subcategory=body.subcategory,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Transaction '{tx_id}' not found.")
+
+    tx = store.get_transaction_by_id(tx_id)
+    return PatchTransactionResponse(
+        id=tx["id"],
+        clean_description=tx["clean_description"],
+        clean_description_source=tx["clean_description_source"],
+        category=tx["category"],
+        subcategory=tx["subcategory"],
+        category_source=tx["category_source"],
+    )
 
 
 # ---------------------------------------------------------------------------

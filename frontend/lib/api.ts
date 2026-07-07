@@ -60,7 +60,8 @@ export interface Transaction {
 }
 
 export interface TransactionList {
-  total: number;
+  total: number;       // total matching rows (unpaginated)
+  amount_total: number; // sum of amount for all matching rows
   limit: number;
   offset: number;
   items: Transaction[];
@@ -112,6 +113,21 @@ export interface RecategorizeResponse {
   clean_description_sources: Record<string, number>;
 }
 
+export interface PatchTransactionRequest {
+  clean_description?: string | null;
+  category?: string | null;
+  subcategory?: string | null;
+}
+
+export interface PatchTransactionResponse {
+  id: string;
+  clean_description: string | null;
+  clean_description_source: string | null;
+  category: string | null;
+  subcategory: string | null;
+  category_source: string | null;
+}
+
 // --- Dashboard types ---
 
 export interface MonthSummaryForDashboard {
@@ -156,12 +172,14 @@ export const api = {
   summary: (month: string) => get<MonthlySummary>(`/summary/${month}`),
   healthScore: () => get<HealthScore>("/health-score"),
   dashboard: () => get<DashboardData>("/dashboard"),
-  transactions: (params?: { month?: string; category?: string; limit?: number; offset?: number }) => {
+  transactions: (params?: { month?: string; year?: number; category?: string; subcategory?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
     if (params?.month) qs.set("month", params.month);
+    if (params?.year) qs.set("year", String(params.year));
     if (params?.category) qs.set("category", params.category);
-    if (params?.limit) qs.set("limit", String(params.limit));
-    if (params?.offset) qs.set("offset", String(params.offset));
+    if (params?.subcategory) qs.set("subcategory", params.subcategory);
+    if (params?.limit != null) qs.set("limit", String(params.limit));
+    if (params?.offset != null) qs.set("offset", String(params.offset));
     return get<TransactionList>(`/transactions?${qs}`);
   },
   upload: (file: File, bank = "santander", useAi = false) => {
@@ -174,5 +192,19 @@ export const api = {
   recategorize: (useAi = false) => {
     const form = new FormData();
     return post<RecategorizeResponse>(`/recategorize?use_ai=${useAi}`, form);
+  },
+  patchTransaction: (id: string, data: PatchTransactionRequest) => {
+    const res = fetch(`${BASE}/transactions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.text();
+        throw new Error(`PATCH /transactions/${id} → ${r.status}: ${err}`);
+      }
+      return r.json() as Promise<PatchTransactionResponse>;
+    });
+    return res;
   },
 };

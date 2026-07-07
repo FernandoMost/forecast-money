@@ -67,10 +67,30 @@ class Transaction(BaseModel):
 
 
 class TransactionList(BaseModel):
-    total: int
+    total: int          # total matching rows (unpaginated)
+    amount_total: float # sum of amount for all matching rows (unpaginated)
     limit: int
     offset: int
     items: list[Transaction]
+
+
+# ---------------------------------------------------------------------------
+# Transaction patch (manual edit)
+# ---------------------------------------------------------------------------
+
+class PatchTransactionRequest(BaseModel):
+    clean_description: str | None = None
+    category: str | None = None
+    subcategory: str | None = None
+
+
+class PatchTransactionResponse(BaseModel):
+    id: str
+    clean_description: str | None
+    clean_description_source: str | None
+    category: str | None
+    subcategory: str | None
+    category_source: str | None
 
 
 # ---------------------------------------------------------------------------
