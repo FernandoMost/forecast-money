@@ -1,8 +1,8 @@
 # Config rules — agent notes
 
 ## Files
-- `category_rules.yaml` — maps descriptions to `(category, subcategory)`
-- `clean_description_rules.yaml` — maps descriptions to a short friendly label
+- `category_rules.yaml` — maps description patterns to `(category, subcategory)`
+- `clean_description_rules.yaml` — maps description patterns to a short friendly label
 
 ## Format
 
@@ -36,6 +36,22 @@ curl -X POST http://localhost:8000/api/v1/recategorize
 ```
 The server reloads the YAML on each call — no restart needed.
 
-## Valid categories (category_rules.yaml)
-`income, housing, subscriptions, groceries, restaurants, transport,
-health, shopping, entertainment, transfers, cash, admin, uncategorized`
+## Full taxonomy (category → subcategories)
+
+| Category | Subcategories |
+|---|---|
+| `income` | `payroll`, `transfer_in`, `bizum_in`, `refund`, `paypal_in` |
+| `housing` | `rent`, `utilities_electricity`, `utilities_water`, `utilities_heating`, `internet_phone` |
+| `subscriptions` | `streaming`, `gym`, `sports_club`, `paypal_sub`, `pagatelia`, `other_sub` |
+| `groceries` | `supermarket`, `other_food_shop` |
+| `restaurants` | `fast_food`, `restaurant`, `cafe_bakery`, `bar_pub` |
+| `transport` | `parking`, `fuel`, `rideshare`, `public_transit`, `train_station`, `tyre_service` |
+| `health` | `pharmacy`, `medical` |
+| `shopping` | `online`, `clothing`, `electronics`, `general` |
+| `entertainment` | `cinema`, `events`, `gaming` |
+| `transfers` | `rent_contribution`, `bizum_out`, `transfer_out` |
+| `cash` | `atm_withdrawal` |
+| `admin` | `city_tax`, `travel_tickets` |
+| `uncategorized` | `other` (fallback — hardcoded, not in YAML) |
+
+**Important:** this taxonomy is mirrored in `frontend/components/CategoryTree.tsx` (`CATEGORY_TREE` constant). If you add/remove categories or subcategories here, update that file too.
