@@ -200,6 +200,8 @@ class SqliteStore:
                 "amount", "balance", "currency", "is_reversal",
                 "category", "subcategory", "category_source", "month", "year"]
         return dict(zip(cols, row))
+
+    def get_all_descriptions(self) -> list[dict]:
         """Returns id + description for every transaction — used by recategorize."""
         with self._connect() as conn:
             rows = conn.execute(
@@ -218,13 +220,24 @@ class SqliteStore:
         category: str | None = None,
         subcategory: str | None = None,
         bank_id: str | None = None,
+        sort_by: str = "date",
+        sort_dir: str = "desc",
         limit: int = 100,
         offset: int = 0,
     ) -> dict:
         """
         Returns paginated transactions plus total count and amount_total for the full
         (unpaginated) query — so the frontend can show accurate pagination and totals.
+
+        sort_by must be one of the allowed column names (whitelist to prevent injection).
+        sort_dir must be 'asc' or 'desc'.
         """
+        _SORTABLE = {"date", "amount", "balance", "description", "category", "month"}
+        if sort_by not in _SORTABLE:
+            sort_by = "date"
+        order = "DESC" if sort_dir.lower() == "desc" else "ASC"
+        # Always add rowid as tiebreaker for stable pagination
+        order_clause = f"ORDER BY {sort_by} {order}, rowid {order}"
         conditions: list[str] = []
         params: list[Any] = []
 
@@ -264,7 +277,7 @@ class SqliteStore:
                        category_source, month, year
                 FROM transactions
                 {where}
-                ORDER BY date DESC, rowid DESC
+                {order_clause}
                 LIMIT ? OFFSET ?
                 """,
                 params + [limit, offset],

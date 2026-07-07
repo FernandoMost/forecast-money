@@ -172,12 +172,14 @@ export const api = {
   summary: (month: string) => get<MonthlySummary>(`/summary/${month}`),
   healthScore: () => get<HealthScore>("/health-score"),
   dashboard: () => get<DashboardData>("/dashboard"),
-  transactions: (params?: { month?: string; year?: number; category?: string; subcategory?: string; limit?: number; offset?: number }) => {
+  transactions: (params?: { month?: string; year?: number; category?: string; subcategory?: string; sort_by?: string; sort_dir?: "asc" | "desc"; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
     if (params?.month) qs.set("month", params.month);
     if (params?.year) qs.set("year", String(params.year));
     if (params?.category) qs.set("category", params.category);
     if (params?.subcategory) qs.set("subcategory", params.subcategory);
+    if (params?.sort_by) qs.set("sort_by", params.sort_by);
+    if (params?.sort_dir) qs.set("sort_dir", params.sort_dir);
     if (params?.limit != null) qs.set("limit", String(params.limit));
     if (params?.offset != null) qs.set("offset", String(params.offset));
     return get<TransactionList>(`/transactions?${qs}`);

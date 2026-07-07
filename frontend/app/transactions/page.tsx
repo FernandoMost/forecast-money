@@ -5,6 +5,8 @@ import {
   ColumnResizeMode,
   flexRender,
   getCoreRowModel,
+  getSortedRowModel,
+  SortingState,
   useReactTable,
 } from "@tanstack/react-table";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -307,6 +309,7 @@ export default function TransactionsPage() {
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [catFilter, setCatFilter] = useState<CategorySelection>({ category: null, subcategory: null });
+  const [sorting, setSorting] = useState<SortingState>([{ id: "date", desc: true }]);
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<TransactionList | null>(null);
   const [loading, setLoading] = useState(false);
@@ -314,19 +317,23 @@ export default function TransactionsPage() {
 
   useEffect(() => { api.months().then((d) => setMonths(d.months)); }, []);
 
-  useEffect(() => { setOffset(0); setEditingId(null); }, [selectedYear, selectedMonth, catFilter]);
+  // Reset pagination on any filter or sort change
+  useEffect(() => { setOffset(0); setEditingId(null); }, [selectedYear, selectedMonth, catFilter, sorting]);
 
   const fetchTxs = useCallback(() => {
+    const s = sorting[0];
     setLoading(true);
     api.transactions({
       month: selectedMonth ?? undefined,
       year: (!selectedMonth && selectedYear) ? selectedYear : undefined,
       category: catFilter.category ?? undefined,
       subcategory: catFilter.subcategory ?? undefined,
+      sort_by: s?.id ?? "date",
+      sort_dir: s ? (s.desc ? "desc" : "asc") : "desc",
       limit: PAGE_SIZE,
       offset,
     }).then(setData).finally(() => setLoading(false));
-  }, [selectedMonth, selectedYear, catFilter, offset]);
+  }, [selectedMonth, selectedYear, catFilter, sorting, offset]);
 
   useEffect(() => { fetchTxs(); }, [fetchTxs]);
 
@@ -354,6 +361,7 @@ export default function TransactionsPage() {
       header: "Date",
       size: 100,
       minSize: 80,
+      enableSorting: true,
       cell: ({ row }) => (
         <span className="text-gray-400 whitespace-nowrap text-xs">{row.original.date}</span>
       ),
@@ -364,6 +372,7 @@ export default function TransactionsPage() {
       header: "Description",
       size: 280,
       minSize: 120,
+      enableSorting: true,
       cell: ({ row }) => {
         const tx = row.original;
         const isIncome = tx.amount > 0 && !tx.is_reversal;
@@ -390,6 +399,7 @@ export default function TransactionsPage() {
       header: "Category",
       size: 180,
       minSize: 100,
+      enableSorting: true,
       cell: ({ row }) => {
         const tx = row.original;
         const isIncome = tx.amount > 0 && !tx.is_reversal;
@@ -421,6 +431,7 @@ export default function TransactionsPage() {
       header: "Amount",
       size: 120,
       minSize: 90,
+      enableSorting: true,
       meta: { align: "right" },
       cell: ({ row }) => {
         const tx = row.original;
@@ -438,6 +449,7 @@ export default function TransactionsPage() {
       header: "Balance",
       size: 120,
       minSize: 90,
+      enableSorting: false,
       meta: { align: "right" },
       cell: ({ row }) => (
         <span className="tabular-nums text-gray-400 text-xs whitespace-nowrap">
@@ -448,9 +460,10 @@ export default function TransactionsPage() {
     {
       id: "_edit",
       header: "",
-      size: 40,
-      minSize: 40,
+      size: 44,
+      minSize: 44,
       enableResizing: false,
+      enableSorting: false,
       cell: ({ row }) => {
         const isEditing = editingId === row.original.id;
         return (
@@ -458,10 +471,10 @@ export default function TransactionsPage() {
             type="button"
             onClick={() => setEditingId((p) => (p === row.original.id ? null : row.original.id))}
             title="Edit"
-            className={`p-1 rounded transition-colors ${
+            className={`p-1.5 rounded-md transition-colors ${
               isEditing
                 ? "text-indigo-600 bg-indigo-100"
-                : "text-gray-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100"
+                : "text-gray-400 hover:text-indigo-600 hover:bg-indigo-50"
             }`}
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -486,6 +499,10 @@ export default function TransactionsPage() {
     columns,
     columnResizeMode,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    manualSorting: true,          // sorting is handled server-side
+    state: { sorting },
+    onSortingChange: setSorting,
     defaultColumn: { minSize: 60 },
   });
 
@@ -542,19 +559,31 @@ export default function TransactionsPage() {
                 <tr key={hg.id} className="bg-gray-50 border-b border-gray-200">
                   {hg.headers.map((header) => {
                     const isRight = (header.column.columnDef.meta as { align?: string } | undefined)?.align === "right";
+                    const canSort = header.column.getCanSort();
+                    const sorted = header.column.getIsSorted(); // false | "asc" | "desc"
                     return (
                       <th
                         key={header.id}
                         style={{ width: header.getSize(), position: "relative" }}
-                        className={`px-4 py-3 font-medium text-gray-600 text-xs select-none border-r border-gray-200 last:border-r-0 ${isRight ? "text-right" : "text-left"}`}
+                        className={`px-4 py-3 font-medium text-gray-600 text-xs select-none border-r border-gray-200 last:border-r-0 ${isRight ? "text-right" : "text-left"} ${canSort ? "cursor-pointer hover:bg-gray-100" : ""}`}
+                        onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                       >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        <span className="inline-flex items-center gap-1">
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {canSort && (
+                            <span className="inline-flex flex-col leading-none text-[9px] -space-y-px">
+                              <span className={sorted === "asc" ? "text-indigo-600" : "text-gray-300"}>▲</span>
+                              <span className={sorted === "desc" ? "text-indigo-600" : "text-gray-300"}>▼</span>
+                            </span>
+                          )}
+                        </span>
 
-                        {/* Resize handle — 4px hit area, visible divider line always shown */}
+                        {/* Resize handle */}
                         {header.column.getCanResize() && (
                           <div
                             onMouseDown={header.getResizeHandler()}
                             onTouchStart={header.getResizeHandler()}
+                            onClick={(e) => e.stopPropagation()}
                             className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none ${
                               header.column.getIsResizing()
                                 ? "bg-indigo-400"

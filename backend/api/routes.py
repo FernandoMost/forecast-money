@@ -281,13 +281,16 @@ def list_transactions(
     category: str | None = Query(None, description="Filter by category"),
     subcategory: str | None = Query(None, description="Filter by subcategory"),
     bank_id: str | None = Query(None, description="Filter by bank"),
+    sort_by: str = Query("date", description="Column to sort by: date|amount|balance|description|category|month"),
+    sort_dir: str = Query("desc", description="Sort direction: asc|desc"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     store: SqliteStore = Depends(get_store),
 ):
     result = store.get_transactions(
         month=month, year=year, category=category, subcategory=subcategory,
-        bank_id=bank_id, limit=limit, offset=offset,
+        bank_id=bank_id, sort_by=sort_by, sort_dir=sort_dir,
+        limit=limit, offset=offset,
     )
     for item in result["items"]:
         item["is_reversal"] = bool(item.get("is_reversal"))
