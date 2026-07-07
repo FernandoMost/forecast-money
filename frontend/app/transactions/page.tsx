@@ -524,9 +524,10 @@ export default function TransactionsPage() {
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          {/* Use explicit table layout so column widths are respected */}
+          {/* minWidth = sum of column sizes so resize never compresses below initial sizes;
+              width 100% fills the container when there's room to spare */}
           <table
-            style={{ width: table.getTotalSize(), tableLayout: "fixed" }}
+            style={{ width: "100%", minWidth: table.getTotalSize(), tableLayout: "fixed" }}
             className="text-sm"
           >
             {/* colgroup drives widths */}
@@ -545,22 +546,22 @@ export default function TransactionsPage() {
                       <th
                         key={header.id}
                         style={{ width: header.getSize(), position: "relative" }}
-                        className={`px-4 py-3 font-medium text-gray-600 text-xs select-none ${isRight ? "text-right" : "text-left"}`}
+                        className={`px-4 py-3 font-medium text-gray-600 text-xs select-none border-r border-gray-200 last:border-r-0 ${isRight ? "text-right" : "text-left"}`}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
 
-                        {/* Resize handle */}
+                        {/* Resize handle — 4px hit area, visible divider line always shown */}
                         {header.column.getCanResize() && (
                           <div
                             onMouseDown={header.getResizeHandler()}
                             onTouchStart={header.getResizeHandler()}
-                            className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none group/resize ${
-                              header.column.getIsResizing() ? "bg-indigo-400" : "hover:bg-indigo-300"
+                            className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none ${
+                              header.column.getIsResizing()
+                                ? "bg-indigo-400"
+                                : "bg-gray-200 hover:bg-indigo-300"
                             }`}
                             style={{ transform: "translateX(50%)" }}
-                          >
-                            <div className="absolute inset-y-2 left-0 w-px bg-current opacity-0 group-hover/resize:opacity-100" />
-                          </div>
+                          />
                         )}
                       </th>
                     );
@@ -611,7 +612,7 @@ export default function TransactionsPage() {
                           <td
                             key={cell.id}
                             style={{ width: cell.column.getSize() }}
-                            className={`px-4 py-2.5 overflow-hidden ${isRight ? "text-right" : ""}`}
+                            className={`px-4 py-2.5 overflow-hidden border-r border-gray-100 last:border-r-0 ${isRight ? "text-right" : ""}`}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </td>
