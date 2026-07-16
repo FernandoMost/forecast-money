@@ -10,6 +10,7 @@ For production (VPS), run with:
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -23,6 +24,8 @@ from api.routes import router
 from api.description_rules import router as description_rules_router
 from auth.routes import router as auth_router
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(
     title="Forecast Money API",
     description="Privacy-first personal finance analyzer. All data stays local.",
@@ -33,11 +36,6 @@ app = FastAPI(
 
 # ---------------------------------------------------------------------------
 # CORS
-#
-# Development: allow the local Next.js dev server.
-# Production: ALLOWED_ORIGINS env var controls the list (set to your domain).
-#
-# credentials=True is required for httpOnly cookies to be sent cross-origin.
 # ---------------------------------------------------------------------------
 
 import os
@@ -51,7 +49,7 @@ _allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_credentials=True,   # required for cookies
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -59,6 +57,45 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(router, prefix="/api/v1")
 app.include_router(description_rules_router, prefix="/api/v1")
+
+
+# ---------------------------------------------------------------------------
+# Startup — migrate YAML rules into shared.db (one-shot, non-destructive)
+# ---------------------------------------------------------------------------
+
+@app.on_event("startup")
+def startup_migrate_rules() -> None:
+    """
+    On first startup, import rules from the legacy clean_description_rules.yaml
+    into data/shared.db if the description_rules table is empty.
+
+    This is a one-shot migration: subsequent restarts are no-ops because
+    the table will already have rows.
+    """
+    try:
+        from api.deps import get_settings
+        from db.shared_store import SharedStore
+
+        settings = get_settings()
+        shared = SharedStore(settings.shared_db_path)
+
+        yaml_candidates = [
+            Path(__file__).parent.parent / "config" / "clean_description_rules.yaml",
+            Path(__file__).parent / "config" / "clean_description_rules.yaml",
+        ]
+        yaml_path = next((p for p in yaml_candidates if p.exists()), yaml_candidates[0])
+
+        imported = shared.migrate_from_yaml(yaml_path)
+        if imported:
+            logger.info("Startup: migrated %d rules from YAML → shared.db", imported)
+
+        # Reload the in-memory rules so description_cleaner uses the DB immediately
+        from categorizer.description_cleaner import reload_rules
+        count = reload_rules()
+        logger.info("Startup: %d description rules loaded into memory.", count)
+
+    except Exception as exc:
+        logger.error("Startup rule migration failed: %s", exc)
 
 
 @app.get("/", include_in_schema=False)

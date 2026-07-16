@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Paths
     data_dir: Path = Path("data")
     auth_db_path: Path = Path("data/auth.db")
+    shared_db_path: Path = Path("data/shared.db")
     users_data_dir: Path = Path("data/users")
 
     # JWT
@@ -44,6 +45,17 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+# ---------------------------------------------------------------------------
+# Shared store (shared.db — rules and other cross-user data)
+# ---------------------------------------------------------------------------
+
+def get_shared_store():
+    """Returns the SharedStore (shared.db). No auth required — rules are global."""
+    from db.shared_store import SharedStore
+    settings = get_settings()
+    return SharedStore(settings.shared_db_path)
 
 
 # ---------------------------------------------------------------------------
