@@ -54,10 +54,6 @@ export function formatDate(date: string, locale = "es-ES"): string {
   }).format(d);
 }
 
-export function formatPercent(value: number): string {
-  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
-}
-
 export const STATUS_COLORS: Record<string, string> = {
   green: "text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800",
   amber: "text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/40 border-yellow-200 dark:border-yellow-800",
