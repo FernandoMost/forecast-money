@@ -413,6 +413,7 @@ class SqliteStore:
         Apply category + clean_description updates to multiple transactions at once.
         Each dict must have: id, category, subcategory, category_source,
                              clean_description, clean_description_source.
+        Manual edits (source='manual') are never overwritten.
         Returns the number of rows updated.
         """
         updated = 0
@@ -420,8 +421,11 @@ class SqliteStore:
             for u in updates:
                 result = conn.execute(
                     """UPDATE transactions
-                       SET category=?, subcategory=?, category_source=?,
-                           clean_description=?, clean_description_source=?
+                       SET category             = CASE WHEN category_source = 'manual' THEN category ELSE ? END,
+                           subcategory          = CASE WHEN category_source = 'manual' THEN subcategory ELSE ? END,
+                           category_source      = CASE WHEN category_source = 'manual' THEN 'manual' ELSE ? END,
+                           clean_description        = CASE WHEN clean_description_source = 'manual' THEN clean_description ELSE ? END,
+                           clean_description_source = CASE WHEN clean_description_source = 'manual' THEN 'manual' ELSE ? END
                        WHERE id=?""",
                     (
                         u["category"], u["subcategory"], u["category_source"],
