@@ -311,7 +311,7 @@
       "noData": "Not enough data."
     }
   },
-  "rules": {
+  "rulesPage": {
     "title": "Description Rules",
     "subtitle": "Manage how transaction descriptions are displayed.",
     "tabRules": "Active rules",

@@ -83,7 +83,7 @@ function PatternInput({
       ))}
       <input
         className="flex-1 min-w-[6rem] bg-transparent outline-none text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400"
-        placeholder={t("rules.patternPlaceholder")}
+        placeholder={t("rulesPage.patternPlaceholder")}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
@@ -130,7 +130,7 @@ function RuleRow({
 
   async function save() {
     if (!patterns.length) {
-      setError(t("rules.errorNeedsPattern"));
+      setError(t("rulesPage.errorNeedsPattern"));
       return;
     }
     setSaving(true);
@@ -150,7 +150,7 @@ function RuleRow({
   }
 
   async function remove() {
-    if (!confirm(t("rules.confirmDelete").replace("{label}", rule.label))) return;
+    if (!confirm(t("rulesPage.confirmDelete").replace("{label}", rule.label))) return;
     try {
       await api.deleteDescriptionRule(rule.label);
       onDeleted(rule.label);
@@ -176,13 +176,13 @@ function RuleRow({
             onClick={() => setEditing(true)}
             className="text-xs px-2 py-1 rounded text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
-            {t("rules.edit")}
+            {t("rulesPage.edit")}
           </button>
           <button
             onClick={remove}
             className="text-xs px-2 py-1 rounded text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
           >
-            {t("rules.delete")}
+            {t("rulesPage.delete")}
           </button>
         </div>
       </div>
@@ -193,7 +193,7 @@ function RuleRow({
     <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-indigo-50/30 dark:bg-indigo-900/10">
       <div className="flex flex-col gap-2">
         <div className="flex gap-2 items-center">
-          <label className="text-xs text-gray-500 w-16 shrink-0">{t("rules.label")}</label>
+          <label className="text-xs text-gray-500 w-16 shrink-0">{t("rulesPage.label")}</label>
           <input
             className="flex-1 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
             value={label}
@@ -201,10 +201,10 @@ function RuleRow({
           />
         </div>
         <div className="flex gap-2 items-start">
-          <label className="text-xs text-gray-500 w-16 shrink-0 pt-1.5">{t("rules.patterns")}</label>
+          <label className="text-xs text-gray-500 w-16 shrink-0 pt-1.5">{t("rulesPage.patterns")}</label>
           <div className="flex-1">
             <PatternInput patterns={patterns} onChange={setPatterns} />
-            <p className="text-xs text-gray-400 mt-1">{t("rules.patternHint")}</p>
+            <p className="text-xs text-gray-400 mt-1">{t("rulesPage.patternHint")}</p>
           </div>
         </div>
         {error && <p className="text-xs text-red-500">{error}</p>}
@@ -213,14 +213,14 @@ function RuleRow({
             onClick={cancel}
             className="text-xs px-3 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
           >
-            {t("rules.cancel")}
+            {t("rulesPage.cancel")}
           </button>
           <button
             onClick={save}
             disabled={saving}
             className="text-xs px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {saving ? t("rules.saving") : t("rules.save")}
+            {saving ? t("rulesPage.saving") : t("rulesPage.save")}
           </button>
         </div>
       </div>
@@ -241,8 +241,8 @@ function NewRuleForm({ onSaved }: { onSaved: (rule: DescriptionRule) => void }) 
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
-    if (!label.trim()) { setError(t("rules.errorNeedsLabel")); return; }
-    if (!patterns.length) { setError(t("rules.errorNeedsPattern")); return; }
+    if (!label.trim()) { setError(t("rulesPage.errorNeedsLabel")); return; }
+    if (!patterns.length) { setError(t("rulesPage.errorNeedsPattern")); return; }
     setSaving(true);
     setError(null);
     try {
@@ -264,30 +264,30 @@ function NewRuleForm({ onSaved }: { onSaved: (rule: DescriptionRule) => void }) 
         onClick={() => setOpen(true)}
         className="w-full text-left px-4 py-2.5 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border-t border-gray-100 dark:border-gray-800"
       >
-        + {t("rules.addRule")}
+        + {t("rulesPage.addRule")}
       </button>
     );
   }
 
   return (
     <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-indigo-50/30 dark:bg-indigo-900/10">
-      <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">{t("rules.addRule")}</p>
+      <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">{t("rulesPage.addRule")}</p>
       <div className="flex flex-col gap-2">
         <div className="flex gap-2 items-center">
-          <label className="text-xs text-gray-500 w-16 shrink-0">{t("rules.label")}</label>
+          <label className="text-xs text-gray-500 w-16 shrink-0">{t("rulesPage.label")}</label>
           <input
             className="flex-1 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-            placeholder={t("rules.labelPlaceholder")}
+            placeholder={t("rulesPage.labelPlaceholder")}
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") save(); }}
           />
         </div>
         <div className="flex gap-2 items-start">
-          <label className="text-xs text-gray-500 w-16 shrink-0 pt-1.5">{t("rules.patterns")}</label>
+          <label className="text-xs text-gray-500 w-16 shrink-0 pt-1.5">{t("rulesPage.patterns")}</label>
           <div className="flex-1">
             <PatternInput patterns={patterns} onChange={setPatterns} />
-            <p className="text-xs text-gray-400 mt-1">{t("rules.patternHint")}</p>
+            <p className="text-xs text-gray-400 mt-1">{t("rulesPage.patternHint")}</p>
           </div>
         </div>
         {error && <p className="text-xs text-red-500">{error}</p>}
@@ -296,14 +296,14 @@ function NewRuleForm({ onSaved }: { onSaved: (rule: DescriptionRule) => void }) 
             onClick={() => { setOpen(false); setError(null); }}
             className="text-xs px-3 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
           >
-            {t("rules.cancel")}
+            {t("rulesPage.cancel")}
           </button>
           <button
             onClick={save}
             disabled={saving}
             className="text-xs px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {saving ? t("rules.saving") : t("rules.save")}
+            {saving ? t("rulesPage.saving") : t("rulesPage.save")}
           </button>
         </div>
       </div>
@@ -332,8 +332,8 @@ function SuggestionCard({
   const [expanded, setExpanded] = useState(false);
 
   async function apply() {
-    if (!label.trim()) { setError(t("rules.errorNeedsLabel")); return; }
-    if (!patterns.length) { setError(t("rules.errorNeedsPattern")); return; }
+    if (!label.trim()) { setError(t("rulesPage.errorNeedsLabel")); return; }
+    if (!patterns.length) { setError(t("rulesPage.errorNeedsPattern")); return; }
     setSaving(true);
     setError(null);
     try {
@@ -355,7 +355,7 @@ function SuggestionCard({
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-800/50">
         <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium shrink-0">
-          {group.total_count} {group.total_count === 1 ? t("rules.tx") : t("rules.txPlural")}
+          {group.total_count} {group.total_count === 1 ? t("rulesPage.tx") : t("rulesPage.txPlural")}
         </span>
         <span className="text-sm font-mono text-gray-500 dark:text-gray-400 truncate flex-1">{group.canonical}</span>
       </div>
@@ -376,8 +376,8 @@ function SuggestionCard({
             className="text-xs text-indigo-500 hover:underline mt-1"
           >
             {expanded
-              ? t("rules.showLess")
-              : t("rules.showMore").replace("{n}", String(group.members.length - previewCount))}
+              ? t("rulesPage.showLess")
+              : t("rulesPage.showMore").replace("{n}", String(group.members.length - previewCount))}
           </button>
         )}
       </div>
@@ -385,7 +385,7 @@ function SuggestionCard({
       {/* Rule editor */}
       <div className="px-4 py-3 flex flex-col gap-2">
         <div className="flex gap-2 items-center">
-          <label className="text-xs text-gray-500 w-16 shrink-0">{t("rules.label")}</label>
+          <label className="text-xs text-gray-500 w-16 shrink-0">{t("rulesPage.label")}</label>
           <input
             className="flex-1 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
             value={label}
@@ -393,10 +393,10 @@ function SuggestionCard({
           />
         </div>
         <div className="flex gap-2 items-start">
-          <label className="text-xs text-gray-500 w-16 shrink-0 pt-1.5">{t("rules.patterns")}</label>
+          <label className="text-xs text-gray-500 w-16 shrink-0 pt-1.5">{t("rulesPage.patterns")}</label>
           <div className="flex-1">
             <PatternInput patterns={patterns} onChange={setPatterns} />
-            <p className="text-xs text-gray-400 mt-1">{t("rules.patternHint")}</p>
+            <p className="text-xs text-gray-400 mt-1">{t("rulesPage.patternHint")}</p>
           </div>
         </div>
         {error && <p className="text-xs text-red-500">{error}</p>}
@@ -405,14 +405,14 @@ function SuggestionCard({
             onClick={() => onDismissed(group.canonical)}
             className="text-xs px-3 py-1 rounded border border-gray-200 dark:border-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
           >
-            {t("rules.dismiss")}
+            {t("rulesPage.dismiss")}
           </button>
           <button
             onClick={apply}
             disabled={saving}
             className="text-xs px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {saving ? t("rules.applying") : t("rules.createAndApply")}
+            {saving ? t("rulesPage.applying") : t("rulesPage.createAndApply")}
           </button>
         </div>
       </div>
@@ -483,7 +483,7 @@ export default function RulesPage() {
     // reload both panels after apply
     loadRules();
     loadSuggestions();
-    setRecategorizeResult(t("rules.appliedSuccess").replace("{label}", label));
+    setRecategorizeResult(t("rulesPage.appliedSuccess").replace("{label}", label));
     setTimeout(() => setRecategorizeResult(null), 4000);
   }
 
@@ -497,7 +497,7 @@ export default function RulesPage() {
     try {
       const res = await api.recategorize(false);
       setRecategorizeResult(
-        t("rules.recategorizeSuccess").replace("{n}", String(res.updated))
+        t("rulesPage.recategorizeSuccess").replace("{n}", String(res.updated))
       );
       loadRules(); // refresh match counts
     } catch (e: unknown) {
@@ -525,10 +525,10 @@ export default function RulesPage() {
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
           <div>
             <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {t("rules.title")}
+              {t("rulesPage.title")}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              {t("rules.subtitle")}
+              {t("rulesPage.subtitle")}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -542,7 +542,7 @@ export default function RulesPage() {
               disabled={recategorizing}
               className="text-sm px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
             >
-              {recategorizing ? t("rules.applyingAll") : t("rules.recategorizeAll")}
+              {recategorizing ? t("rulesPage.applyingAll") : t("rulesPage.recategorizeAll")}
             </button>
           </div>
         </div>
@@ -562,7 +562,7 @@ export default function RulesPage() {
                   : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
               }`}
             >
-              {t("rules.tabRules")}
+              {t("rulesPage.tabRules")}
               <span className="ml-1.5 text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded-full">
                 {rules.length}
               </span>
@@ -575,7 +575,7 @@ export default function RulesPage() {
                   : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
               }`}
             >
-              {t("rules.tabSuggestions")}
+              {t("rulesPage.tabSuggestions")}
               {visibleSuggestions.length > 0 && (
                 <span className="ml-1.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
                   {visibleSuggestions.length}
@@ -591,25 +591,25 @@ export default function RulesPage() {
               <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800">
                 <input
                   className="w-full text-sm bg-transparent outline-none text-gray-700 dark:text-gray-200 placeholder-gray-400"
-                  placeholder={t("rules.search")}
+                  placeholder={t("rulesPage.search")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
 
               {loadingRules ? (
-                <div className="px-4 py-8 text-center text-sm text-gray-400">{t("rules.loading")}</div>
+                <div className="px-4 py-8 text-center text-sm text-gray-400">{t("rulesPage.loading")}</div>
               ) : filteredRules.length === 0 ? (
                 <div className="px-4 py-8 text-center text-sm text-gray-400">
-                  {search ? t("rules.noMatch") : t("rules.noRules")}
+                  {search ? t("rulesPage.noMatch") : t("rulesPage.noRules")}
                 </div>
               ) : (
                 <div>
                   {/* Header row */}
                   <div className="flex items-center gap-3 px-4 py-1.5 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 text-xs text-gray-400">
                     <span className="w-8 text-right shrink-0">#</span>
-                    <span className="w-44 shrink-0">{t("rules.colLabel")}</span>
-                    <span className="flex-1">{t("rules.colPatterns")}</span>
+                    <span className="w-44 shrink-0">{t("rulesPage.colLabel")}</span>
+                    <span className="flex-1">{t("rulesPage.colPatterns")}</span>
                   </div>
                   {filteredRules.map((rule) => (
                     <RuleRow
@@ -629,19 +629,19 @@ export default function RulesPage() {
           {tab === "suggestions" && (
             <div>
               {loadingSuggestions ? (
-                <div className="py-8 text-center text-sm text-gray-400">{t("rules.loading")}</div>
+                <div className="py-8 text-center text-sm text-gray-400">{t("rulesPage.loading")}</div>
               ) : visibleSuggestions.length === 0 ? (
                 <div className="py-12 text-center">
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {uncoveredTotal === 0
-                      ? t("rules.allCovered")
-                      : t("rules.noPendingSuggestions")}
+                      ? t("rulesPage.allCovered")
+                      : t("rulesPage.noPendingSuggestions")}
                   </p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-4">
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {t("rules.suggestionIntro")
+                    {t("rulesPage.suggestionIntro")
                       .replace("{groups}", String(visibleSuggestions.length))
                       .replace("{total}", String(uncoveredTotal))}
                   </p>

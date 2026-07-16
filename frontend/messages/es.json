@@ -311,7 +311,7 @@
       "noData": "Sin datos suficientes."
     }
   },
-  "rules": {
+  "rulesPage": {
     "title": "Reglas de limpieza",
     "subtitle": "Gestiona cómo se muestran las descripciones de tus movimientos.",
     "tabRules": "Reglas activas",
