@@ -17,6 +17,47 @@ export function formatPercent(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
+/**
+ * Map a short locale code ("es" | "en") to a full BCP-47 tag for Intl APIs.
+ */
+export function toIntlLocale(locale: string): string {
+  return locale === "en" ? "en-GB" : "es-ES";
+}
+
+/**
+ * Format a YYYY-MM month string as "MonthName Year".
+ * e.g. "2024-05" → "mayo 2024" (es) / "May 2024" (en)
+ */
+export function formatMonth(month: string, locale = "es-ES"): string {
+  // month is "YYYY-MM" — parse as first day of that month in UTC
+  const [year, mon] = month.split("-");
+  const date = new Date(Date.UTC(Number(year), Number(mon) - 1, 1));
+  return new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+/**
+ * Format a YYYY-MM-DD date string as "D monthName YYYY".
+ * e.g. "2024-05-12" → "12 mayo 2024" (es) / "12 May 2024" (en)
+ */
+export function formatDate(date: string, locale = "es-ES"): string {
+  const [year, mon, day] = date.split("-");
+  const d = new Date(Date.UTC(Number(year), Number(mon) - 1, Number(day)));
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(d);
+}
+
+export function formatPercent(value: number): string {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
 export const STATUS_COLORS: Record<string, string> = {
   green: "text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800",
   amber: "text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/40 border-yellow-200 dark:border-yellow-800",

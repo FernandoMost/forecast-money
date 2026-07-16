@@ -6,7 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell,
 } from "recharts";
 import { api, HealthScore, HealthScoreHistoryEntry, RuleResult } from "@/lib/api";
-import { formatEur, STATUS_COLORS, STATUS_BADGE } from "@/lib/utils";
+import { formatEur, STATUS_COLORS, STATUS_BADGE, formatDate, toIntlLocale } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { translateRuleName, translateRuleMessage } from "@/lib/translateRule";
 
@@ -74,7 +74,8 @@ function ScoreGauge({ score, grade }: { score: number; grade: string }) {
 // ---------------------------------------------------------------------------
 
 function HistoryChart({ history }: { history: HealthScoreHistoryEntry[] }) {
-  const { t } = useT();
+  const { t, locale } = useT();
+  const intlLocale = toIntlLocale(locale);
   if (history.length < 2) {
     return (
       <div className="text-xs text-gray-400 dark:text-gray-500 italic py-4 text-center">
@@ -84,7 +85,7 @@ function HistoryChart({ history }: { history: HealthScoreHistoryEntry[] }) {
   }
 
   const data = [...history].reverse().map((h) => ({
-    date: h.recorded_at.slice(0, 10),
+    date: formatDate(h.recorded_at.slice(0, 10), intlLocale),
     score: h.overall_score,
     grade: h.grade,
   }));
@@ -332,7 +333,8 @@ function SubscriptionDetail({ d }: { d: Record<string, unknown> }) {
 
 // 3.4 Leisure cap
 function LeisureCapDetail({ d }: { d: Record<string, unknown> }) {
-  const { t } = useT();
+  const { t, locale } = useT();
+  const intlLocale = toIntlLocale(locale);
   const txs = (d.latest_transactions as Array<{ date: string; description: string; category: string; subcategory: string | null; amount: number }>) ?? [];
   const spent = d.latest_leisure_spent as number;
   const budget = d.latest_leisure_budget as number;
@@ -387,7 +389,7 @@ function LeisureCapDetail({ d }: { d: Record<string, unknown> }) {
               <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
                 {txs.map((tx, i) => (
                   <tr key={i}>
-                    <td className="py-1 text-gray-400 dark:text-gray-500 whitespace-nowrap">{tx.date}</td>
+                    <td className="py-1 text-gray-400 dark:text-gray-500 whitespace-nowrap">{formatDate(tx.date, intlLocale)}</td>
                     <td className="py-1 text-gray-700 dark:text-gray-300 max-w-[180px] truncate">{tx.description}</td>
                     <td className="py-1 text-gray-500 dark:text-gray-400">{tx.subcategory ?? tx.category}</td>
                     <td className="py-1 text-right tabular-nums font-medium text-gray-800 dark:text-gray-200">{formatEur(tx.amount)}</td>
@@ -600,7 +602,8 @@ function RuleDetail({ rule }: { rule: RuleResult }) {
 // ---------------------------------------------------------------------------
 
 export default function HealthPage() {
-  const { t } = useT();
+  const { t, locale } = useT();
+  const intlLocale = toIntlLocale(locale);
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [history, setHistory] = useState<HealthScoreHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -666,7 +669,7 @@ export default function HealthPage() {
             <div className="mt-2 flex flex-wrap gap-2">
               {[...history].reverse().slice(-6).map((h) => (
                 <div key={h.id} className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                  <span className="text-gray-300 dark:text-gray-600">{h.recorded_at.slice(0, 10)}</span>
+                   <span className="text-gray-300 dark:text-gray-600">{formatDate(h.recorded_at.slice(0, 10), intlLocale)}</span>
                   <span className={`font-bold ${h.overall_score >= 80 ? "text-green-600" : h.overall_score >= 55 ? "text-yellow-600" : "text-red-600"}`}>
                     {h.overall_score.toFixed(0)} ({h.grade})
                   </span>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, DashboardData, MonthSummaryForDashboard, RuleResult } from "@/lib/api";
-import { formatEur, STATUS_COLORS, STATUS_BADGE } from "@/lib/utils";
+import { formatEur, STATUS_COLORS, STATUS_BADGE, formatDate, toIntlLocale } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { translateRuleName, translateRuleMessage } from "@/lib/translateRule";
 import Link from "next/link";
@@ -176,7 +176,8 @@ function Skeleton() {
 }
 
 export default function DashboardPage() {
-  const { t } = useT();
+  const { t, locale } = useT();
+  const intlLocale = toIntlLocale(locale);
   const [data, setData] = useState<DashboardData | null>(null);
   const [recentTxs, setRecentTxs] = useState<Awaited<ReturnType<typeof api.transactions>>["items"]>([]);
   const [loading, setLoading] = useState(true);
@@ -246,7 +247,7 @@ export default function DashboardPage() {
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {recentTxs.map((tx) => (
                   <tr key={tx.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${tx.is_reversal ? "opacity-50" : ""}`}>
-                    <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap w-24">{tx.date}</td>
+                    <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap w-24">{formatDate(tx.date, intlLocale)}</td>
                     <td className="px-4 py-2.5 text-gray-800 dark:text-gray-200 max-w-xs" title={tx.description}>
                       {tx.clean_description
                         ? <span className="font-medium">{tx.clean_description}</span>

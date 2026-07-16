@@ -13,7 +13,7 @@ import {
 } from "@tanstack/react-table";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, PatchTransactionRequest, Transaction, TransactionList } from "@/lib/api";
-import { formatEur } from "@/lib/utils";
+import { formatEur, formatDate, toIntlLocale } from "@/lib/utils";
 import CategoryTree, {
   useCategoryTree,
   catLabel,
@@ -516,7 +516,8 @@ function getCurrentYearMonth(): { year: number; month: string } {
 }
 
 export default function TransactionsPage() {
-  const { t } = useT();
+  const { t, locale } = useT();
+  const intlLocale = toIntlLocale(locale);
   const { year: currentYear, month: currentMonth } = getCurrentYearMonth();
 
   const [months, setMonths]             = useState<string[]>([]);
@@ -616,7 +617,7 @@ export default function TransactionsPage() {
       minSize: 72,
       enableSorting: true,
       cell: ({ row }) => (
-        <span className="text-gray-400 dark:text-gray-500 whitespace-nowrap text-xs tabular-nums">{row.original.date}</span>
+        <span className="text-gray-400 dark:text-gray-500 whitespace-nowrap text-xs tabular-nums">{formatDate(row.original.date, intlLocale)}</span>
       ),
     },
     {
