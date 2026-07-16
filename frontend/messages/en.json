@@ -6,6 +6,7 @@
     "health": "Health",
     "categories": "Categories",
     "upload": "Upload",
+    "rules": "Rules",
     "tagline": "local mode — data never leaves your server"
   },
   "dashboard": {
@@ -309,5 +310,45 @@
       "red": "Lifestyle inflation detected: spending {exp_change} without matching income growth ({inc_change}).",
       "noData": "Not enough data."
     }
+  },
+  "rules": {
+    "title": "Description Rules",
+    "subtitle": "Manage how transaction descriptions are displayed.",
+    "tabRules": "Active rules",
+    "tabSuggestions": "Suggestions",
+    "search": "Search by name or pattern…",
+    "loading": "Loading…",
+    "noRules": "No rules yet. Add one.",
+    "noMatch": "No results for that search.",
+    "colLabel": "Name",
+    "colPatterns": "Patterns (regex, case-insensitive)",
+    "label": "Name",
+    "labelPlaceholder": "E.g. Amazon",
+    "patterns": "Patterns",
+    "patternPlaceholder": "Pattern then Enter",
+    "patternHint": "Case-insensitive regex. First match wins. Press Enter or comma to add.",
+    "addRule": "Add rule",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "confirmDelete": "Delete rule «{label}»?",
+    "errorNeedsLabel": "Name cannot be empty.",
+    "errorNeedsPattern": "Add at least one pattern.",
+    "recategorizeAll": "Apply all rules",
+    "applyingAll": "Applying…",
+    "recategorizeSuccess": "{n} transactions updated.",
+    "appliedSuccess": "Rule «{label}» created and applied.",
+    "suggestionIntro": "{groups} uncovered groups · {total} unique uncleaned descriptions",
+    "allCovered": "All descriptions have a rule assigned.",
+    "noPendingSuggestions": "No pending suggestions.",
+    "tx": "transaction",
+    "txPlural": "transactions",
+    "showMore": "Show {n} more",
+    "showLess": "Show less",
+    "createAndApply": "Create rule and apply",
+    "applying": "Applying…",
+    "dismiss": "Dismiss"
   }
 }

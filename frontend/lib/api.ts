@@ -67,6 +67,21 @@ async function patchJson<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function putJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "include",
+  });
+  if (res.status === 401) throw new AuthError();
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`API PUT ${path} → ${res.status}: ${err}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 async function del<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "DELETE",
@@ -298,6 +313,42 @@ export interface HealthScoreHistoryResponse {
   history: HealthScoreHistoryEntry[];
 }
 
+// --- Description Rules types ---
+
+export interface DescriptionRule {
+  label: string;
+  patterns: string[];
+  match_count: number;
+}
+
+export interface RuleListResponse {
+  rules: DescriptionRule[];
+  total: number;
+}
+
+export interface SuggestionMember {
+  raw: string;
+  count: number;
+}
+
+export interface SuggestionGroup {
+  canonical: string;
+  suggested_label: string;
+  suggested_patterns: string[];
+  members: SuggestionMember[];
+  total_count: number;
+}
+
+export interface SuggestionsResponse {
+  groups: SuggestionGroup[];
+  uncovered_total: number;
+}
+
+export interface ApplyRulesResponse {
+  saved: number;
+  updated: number;
+}
+
 // --- Auth types ---
 
 export interface UserOut {
@@ -363,4 +414,17 @@ export const api = {
     patchJson<CategoryItem>(`/categories/${id}`, data),
   deleteCategory: (id: string) =>
     del<CategoryDeleteResponse>(`/categories/${id}`),
+
+  // Description Rules CRUD
+  descriptionRules: () => get<RuleListResponse>("/description-rules"),
+  createDescriptionRule: (label: string, patterns: string[], position?: number) =>
+    postJson<DescriptionRule>("/description-rules", { label, patterns, position }),
+  updateDescriptionRule: (label: string, data: { new_label?: string; patterns?: string[] }) =>
+    putJson<DescriptionRule>(`/description-rules/${encodeURIComponent(label)}`, data),
+  deleteDescriptionRule: (label: string) =>
+    del<{ deleted: boolean; label: string }>(`/description-rules/${encodeURIComponent(label)}`),
+  descriptionSuggestions: (limit = 50) =>
+    get<SuggestionsResponse>(`/description-suggestions?limit=${limit}`),
+  applyDescriptionRules: (rules: { label: string; patterns: string[]; position?: number }[]) =>
+    postJson<ApplyRulesResponse>("/description-rules/apply", { rules }),
 };

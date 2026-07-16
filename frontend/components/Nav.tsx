@@ -17,6 +17,7 @@ export default function Nav() {
     { href: "/trends",       label: t("nav.trends") },
     { href: "/health",       label: t("nav.health") },
     { href: "/categories",   label: t("nav.categories") },
+    { href: "/rules",        label: t("nav.rules") },
     { href: "/upload",       label: t("nav.upload") },
   ];
 

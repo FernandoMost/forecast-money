@@ -6,6 +6,7 @@
     "health": "Salud",
     "categories": "Categorías",
     "upload": "Importar",
+    "rules": "Reglas",
     "tagline": "modo local — tus datos no salen de tu servidor"
   },
   "dashboard": {
@@ -309,5 +310,45 @@
       "red": "Inflación detectada: gasto {exp_change} sin aumento proporcional de ingresos ({inc_change}).",
       "noData": "Sin datos suficientes."
     }
+  },
+  "rules": {
+    "title": "Reglas de limpieza",
+    "subtitle": "Gestiona cómo se muestran las descripciones de tus movimientos.",
+    "tabRules": "Reglas activas",
+    "tabSuggestions": "Sugerencias",
+    "search": "Buscar por nombre o patrón…",
+    "loading": "Cargando…",
+    "noRules": "No hay reglas. Añade una.",
+    "noMatch": "Sin resultados para esa búsqueda.",
+    "colLabel": "Nombre",
+    "colPatterns": "Patrones (regex, case-insensitive)",
+    "label": "Nombre",
+    "labelPlaceholder": "Ej: Amazon",
+    "patterns": "Patrones",
+    "patternPlaceholder": "Patrón y Enter",
+    "patternHint": "Regex case-insensitive. Primer resultado gana. Enter o coma para añadir.",
+    "addRule": "Añadir regla",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "cancel": "Cancelar",
+    "confirmDelete": "¿Eliminar la regla «{label}»?",
+    "errorNeedsLabel": "El nombre no puede estar vacío.",
+    "errorNeedsPattern": "Añade al menos un patrón.",
+    "recategorizeAll": "Aplicar todas las reglas",
+    "applyingAll": "Aplicando…",
+    "recategorizeSuccess": "{n} movimientos actualizados.",
+    "appliedSuccess": "Regla «{label}» creada y aplicada.",
+    "suggestionIntro": "{groups} grupos sin cubrir · {total} descripciones únicas sin limpiar",
+    "allCovered": "Todas las descripciones tienen regla asignada.",
+    "noPendingSuggestions": "Sin sugerencias pendientes.",
+    "tx": "movimiento",
+    "txPlural": "movimientos",
+    "showMore": "Ver {n} más",
+    "showLess": "Ver menos",
+    "createAndApply": "Crear regla y aplicar",
+    "applying": "Aplicando…",
+    "dismiss": "Ignorar"
   }
 }
