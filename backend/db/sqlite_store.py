@@ -451,7 +451,7 @@ class SqliteStore:
         with self._connect() as conn:
             result = conn.execute(
                 """UPDATE transactions
-                   SET clean_description        = ?,
+                   SET clean_description        = COALESCE(?, clean_description),
                        clean_description_source = CASE WHEN ? IS NOT NULL THEN 'manual' ELSE clean_description_source END,
                        category                 = COALESCE(?, category),
                        subcategory              = COALESCE(?, subcategory),
