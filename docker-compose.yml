@@ -1,5 +1,10 @@
 version: "3.9"
 
+# ---------------------------------------------------------------------------
+# Development (default): docker compose up
+# Production (VPS):       docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ---------------------------------------------------------------------------
+
 services:
   backend:
     build:
@@ -10,13 +15,20 @@ services:
     volumes:
       - ./data:/app/backend/data
     environment:
-      DB_PATH: /app/backend/data/finance.db
       DATA_DIR: /app/backend/data
+      # Override in production via backend/.env or docker-compose.prod.yml:
+      # SECRET_KEY: <long-random-string>
+      # COOKIE_SECURE: "true"
+      # ALLOWED_ORIGINS: https://yourdomain.com
+    env_file:
+      - path: ./backend/.env
+        required: false
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 10s
 
   frontend:
     build:
@@ -25,7 +37,10 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://backend:8000/api/v1
+      # In development, the browser calls the API directly.
+      # In production (behind Caddy), requests to /api/v1 are proxied — so this
+      # should be a relative path. Set per environment in docker-compose.prod.yml.
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
     depends_on:
       backend:
         condition: service_healthy

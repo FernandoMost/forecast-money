@@ -6,6 +6,11 @@ Endpoints:
   GET    /dashboard             — Dashboard: health score + current/last month enriched summaries
   GET    /summary/{month}       — Monthly financial summary
   GET    /transactions          — Paginated + filtered transaction list
+  PATCH  /transactions/{id}     — Manually edit a transaction
+  GET    /categories            — List full category tree
+  POST   /categories            — Create a new category or subcategory
+  PATCH  /categories/{id}       — Update a category (name, color, role, position)
+  DELETE /categories/{id}       — Delete a category (nulls associated transactions)
   GET    /health-score          — Full 7-rule health analysis
   GET    /health                — API health check
   GET    /months                — Available months list
@@ -26,8 +31,15 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import JSONResponse
 
 from api.models import (
+    CategoryCreateRequest,
+    CategoryDeleteResponse,
+    CategoryItem,
+    CategoryListResponse,
+    CategoryUpdateRequest,
+    CategoryWithChildren,
     DashboardResponse,
     HealthCheckResponse,
+    HealthScoreHistoryResponse,
     HealthScoreResponse,
     MonthSummaryForDashboard,
     MonthlySummary,
@@ -37,7 +49,7 @@ from api.models import (
     TransactionList,
     UploadResponse,
 )
-from api.deps import get_store, get_settings
+from api.deps import get_store, get_settings, get_current_user
 from categorizer.ai_categorizer import AiCategorizer
 from categorizer.rule_categorizer import categorize_transaction, reload_rules as reload_category_rules
 from categorizer.description_cleaner import reload_rules as reload_clean_rules
@@ -84,7 +96,7 @@ async def upload_statement(
         normalized = [normalize(raw, meta.bank_id) for raw in result.transactions]
 
         if use_ai:
-            ai = AiCategorizer(cache_path=settings.data_dir / "category_cache.db")
+            ai = AiCategorizer(cache_path=settings.data_dir / "category_cache.db", store=store)
             categorized = [ai.categorize_transaction(tx) for tx in normalized]
         else:
             categorized = [categorize_transaction(tx) for tx in normalized]
@@ -103,6 +115,23 @@ async def upload_statement(
                 "export_date": meta.export_date,
             },
         )
+
+        # Save health score snapshot whenever new transactions were inserted
+        if inserted > 0:
+            try:
+                all_txs_for_health = store.get_all_transactions_for_rules()
+                sorted_h = sorted(all_txs_for_health, key=lambda t: t["date"], reverse=True)
+                h_balance = sorted_h[0].get("balance") if sorted_h else None
+                h_engine = HealthEngine(current_balance=h_balance, store=store)
+                h_report = h_engine.analyze(all_txs_for_health)
+                store.save_health_score(
+                    import_id=import_id,
+                    overall_score=h_report.overall_score,
+                    grade=h_report.grade,
+                    rule_scores={r.rule_id: r.score for r in h_report.rules},
+                )
+            except Exception:
+                pass  # non-critical — never block the upload response
 
         return UploadResponse(
             import_id=import_id,
@@ -176,7 +205,7 @@ def get_dashboard(store: SqliteStore = Depends(get_store)):
     # --- Health score ---
     sorted_txs = sorted(all_txs, key=lambda t: t["date"], reverse=True)
     latest_balance = sorted_txs[0].get("balance")
-    engine = HealthEngine(current_balance=latest_balance)
+    engine = HealthEngine(current_balance=latest_balance, store=store)
     health = engine.analyze(all_txs)
     health_response = HealthScoreResponse(
         overall_score=health.overall_score,
@@ -189,7 +218,7 @@ def get_dashboard(store: SqliteStore = Depends(get_store)):
             for r in health.rules
         ],
         alerts=[
-            {"rule_id": r.rule_id, "name": r.name, "status": r.status, "message": r.message}
+            {"rule_id": r.rule_id, "name": r.name, "status": r.status, "message": r.message, "details": r.details}
             for r in health.alerts
         ],
     )
@@ -340,6 +369,123 @@ def patch_transaction(
 
 
 # ---------------------------------------------------------------------------
+# GET /categories
+# ---------------------------------------------------------------------------
+
+@router.get("/categories", response_model=CategoryListResponse, summary="List category tree")
+def list_categories(store: SqliteStore = Depends(get_store)):
+    """
+    Returns the full category tree: top-level categories with their subcategories nested.
+    """
+    flat = store.get_categories()
+    # Build tree: top-level first, then attach children
+    top_level = [c for c in flat if c["parent_id"] is None]
+    children_by_parent: dict[str, list[dict]] = {}
+    for c in flat:
+        if c["parent_id"] is not None:
+            children_by_parent.setdefault(c["parent_id"], []).append(c)
+
+    result = []
+    for cat in top_level:
+        subs = sorted(children_by_parent.get(cat["id"], []), key=lambda x: x["position"])
+        result.append(CategoryWithChildren(
+            id=cat["id"],
+            name=cat["name"],
+            color=cat["color"],
+            role=cat["role"],
+            position=cat["position"],
+            created_at=cat.get("created_at"),
+            subcategories=[CategoryItem(**s) for s in subs],
+        ))
+
+    return CategoryListResponse(categories=sorted(result, key=lambda x: x.position))
+
+
+# ---------------------------------------------------------------------------
+# POST /categories
+# ---------------------------------------------------------------------------
+
+@router.post("/categories", response_model=CategoryItem, status_code=201, summary="Create a category or subcategory")
+def create_category(
+    body: CategoryCreateRequest,
+    store: SqliteStore = Depends(get_store),
+):
+    """
+    Create a new top-level category (parent_id=null) or subcategory (parent_id=existing category id).
+    The id must be a unique slug (e.g. 'transport', 'fuel').
+    """
+    # Validate parent exists if provided
+    if body.parent_id is not None:
+        parent = store.get_category_by_id(body.parent_id)
+        if not parent:
+            raise HTTPException(status_code=404, detail=f"Parent category '{body.parent_id}' not found.")
+        if parent["parent_id"] is not None:
+            raise HTTPException(status_code=400, detail="Subcategories cannot have subcategories (max depth: 2).")
+
+    try:
+        cat = store.create_category(
+            cat_id=body.id,
+            name=body.name,
+            parent_id=body.parent_id,
+            color=body.color,
+            role=body.role,
+            position=body.position,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    return CategoryItem(**cat)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /categories/{id}
+# ---------------------------------------------------------------------------
+
+@router.patch("/categories/{cat_id}", response_model=CategoryItem, summary="Update a category")
+def patch_category(
+    cat_id: str,
+    body: CategoryUpdateRequest,
+    store: SqliteStore = Depends(get_store),
+):
+    """
+    Update name, color, role, and/or position of an existing category.
+    Only the provided fields are changed.
+    """
+    updated = store.update_category(
+        cat_id=cat_id,
+        name=body.name,
+        color=body.color,
+        role=body.role,
+        position=body.position,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Category '{cat_id}' not found.")
+    return CategoryItem(**updated)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /categories/{id}
+# ---------------------------------------------------------------------------
+
+@router.delete("/categories/{cat_id}", response_model=CategoryDeleteResponse, summary="Delete a category")
+def delete_category(
+    cat_id: str,
+    store: SqliteStore = Depends(get_store),
+):
+    """
+    Delete a category (and its subcategories).
+    Transactions referencing the deleted category/subcategories will have their
+    category and subcategory set to NULL.
+    """
+    existing = store.get_category_by_id(cat_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Category '{cat_id}' not found.")
+
+    result = store.delete_category(cat_id)
+    return CategoryDeleteResponse(**result)
+
+
+# ---------------------------------------------------------------------------
 # GET /health-score
 # ---------------------------------------------------------------------------
 
@@ -358,7 +504,7 @@ def get_health_score(
         sorted_txs = sorted(all_txs, key=lambda t: t["date"], reverse=True)
         latest_balance = sorted_txs[0].get("balance")
 
-    engine = HealthEngine(current_balance=latest_balance)
+    engine = HealthEngine(current_balance=latest_balance, store=store)
     health = engine.analyze(all_txs)
 
     return HealthScoreResponse(
@@ -378,10 +524,24 @@ def get_health_score(
             for r in health.rules
         ],
         alerts=[
-            {"rule_id": r.rule_id, "name": r.name, "status": r.status, "message": r.message}
+            {"rule_id": r.rule_id, "name": r.name, "status": r.status, "message": r.message, "details": r.details}
             for r in health.alerts
         ],
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /health-history
+# ---------------------------------------------------------------------------
+
+@router.get("/health-history", response_model=HealthScoreHistoryResponse, summary="Health score history")
+def get_health_history(
+    limit: int = 50,
+    store: SqliteStore = Depends(get_store),
+):
+    """Returns the historical health score snapshots recorded after each import."""
+    history = store.get_health_score_history(limit=limit)
+    return HealthScoreHistoryResponse(history=history)
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +568,7 @@ def health_check(
     return HealthCheckResponse(
         status="ok",
         version="1.0.0",
-        db_path=str(settings.db_path),
+        db_path=str(settings.users_data_dir),
         available_months=months,
         total_transactions=total,
     )
@@ -453,6 +613,7 @@ def recategorize(
             ollama_url=settings.ollama_url,
             model=settings.ollama_model,
             cache_path=settings.data_dir / "category_cache.db",
+            store=store,
         )
         categorized = [ai.categorize_transaction(row) for row in rows]
     else:

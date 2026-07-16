@@ -22,19 +22,43 @@ from categorizer.description_cleaner import clean_description as rule_clean
 
 logger = logging.getLogger(__name__)
 
-_VALID_CATEGORIES = {
+# Fallback valid categories — used when the DB is not available.
+_FALLBACK_VALID_CATEGORIES = {
     "income", "housing", "subscriptions", "groceries", "restaurants",
     "transport", "health", "shopping", "entertainment", "transfers",
     "cash", "admin", "uncategorized",
 }
 
-_SYSTEM_PROMPT = """You are a financial transaction labeler for a Spanish bank account.
+_FALLBACK_SYSTEM_PROMPT = """You are a financial transaction labeler for a Spanish bank account.
 Given a raw bank transaction description, output ONLY a JSON object with three fields:
   "category": one of [income, housing, subscriptions, groceries, restaurants, transport, health, shopping, entertainment, transfers, cash, admin, uncategorized]
   "subcategory": a short English snake_case label (e.g. "rent", "supermarket", "fast_food", "fuel")
   "clean_description": a very short human-friendly label in Spanish (2-4 words max, e.g. "Mercadona", "Amazon", "Gasolina", "Parking", "Netflix", "Cajero", "Peajes", "Nómina")
 
 Do not output anything other than the JSON object. No explanation, no markdown fences."""
+
+
+def _build_system_prompt(valid_categories: set[str]) -> str:
+    cat_list = ", ".join(sorted(valid_categories))
+    return f"""You are a financial transaction labeler for a Spanish bank account.
+Given a raw bank transaction description, output ONLY a JSON object with three fields:
+  "category": one of [{cat_list}]
+  "subcategory": a short English snake_case label (e.g. "rent", "supermarket", "fast_food", "fuel")
+  "clean_description": a very short human-friendly label in Spanish (2-4 words max, e.g. "Mercadona", "Amazon", "Gasolina", "Parking", "Netflix", "Cajero", "Peajes", "Nómina")
+
+Do not output anything other than the JSON object. No explanation, no markdown fences."""
+
+
+def _load_valid_categories_from_store(store) -> set[str]:
+    """Load top-level category ids from the SqliteStore."""
+    try:
+        cats = store.get_categories()
+        top_level = {c["id"] for c in cats if c["parent_id"] is None}
+        if top_level:
+            return top_level
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load categories from store: %s", exc)
+    return set()
 
 
 class AiCategorizer:
@@ -49,6 +73,7 @@ class AiCategorizer:
         ollama_url: str = "http://localhost:11434",
         model: str = "llama3",
         cache_path: str | Path = "data/category_cache.db",
+        store=None,  # optional SqliteStore for dynamic category list
     ):
         self._url = ollama_url.rstrip("/")
         self._model = model
@@ -56,6 +81,15 @@ class AiCategorizer:
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_cache()
         self._ollama_available: bool | None = None  # lazy check
+
+        # Build valid categories and system prompt from DB if available
+        if store is not None:
+            db_cats = _load_valid_categories_from_store(store)
+        else:
+            db_cats = set()
+
+        self._valid_categories = db_cats if db_cats else _FALLBACK_VALID_CATEGORIES
+        self._system_prompt = _build_system_prompt(self._valid_categories)
 
     # ------------------------------------------------------------------
     # Public API
@@ -140,20 +174,20 @@ class AiCategorizer:
         payload = {
             "model": self._model,
             "prompt": f'Transaction: "{description}"\n\nClassify it.',
-            "system": _SYSTEM_PROMPT,
+            "system": self._system_prompt,
             "stream": False,
         }
         try:
             resp = requests.post(f"{self._url}/api/generate", json=payload, timeout=30)
             resp.raise_for_status()
             raw_response = resp.json().get("response", "")
-            return self._parse_llm_response(raw_response)
+            return self._parse_llm_response(raw_response, self._valid_categories)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Ollama call failed: %s", exc)
             return None
 
     @staticmethod
-    def _parse_llm_response(raw: str) -> dict | None:
+    def _parse_llm_response(raw: str, valid_categories: set[str]) -> dict | None:
         """Extract JSON from LLM response, tolerating minor formatting quirks."""
         raw = raw.strip()
         # Strip markdown code fences if present
@@ -165,7 +199,7 @@ class AiCategorizer:
             category = data.get("category", "uncategorized")
             subcategory = data.get("subcategory", "other")
             clean = data.get("clean_description") or None
-            if category not in _VALID_CATEGORIES:
+            if category not in valid_categories:
                 category = "uncategorized"
             return {
                 "category": category,

@@ -26,7 +26,6 @@ RUN mkdir -p data output
 
 ENV PYTHONPATH=/app/backend
 ENV DATA_DIR=/app/backend/data
-ENV DB_PATH=/app/backend/data/finance.db
 
 EXPOSE 8000
 

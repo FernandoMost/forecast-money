@@ -39,19 +39,23 @@
   patterns:
     - "ALQUILER|ARRENDAMIENTO"
 
-- label: "Luz"
+- label: "Recibo luz"
   patterns:
     - "ENDESA|IBERDROLA|NATURGY|ELECTRICIDAD|WASABI ENERGIA"
 
-- label: "Agua"
+- label: "Recibo agua"
   patterns:
     - "VIAQUA|AGUAS\\b|AGUA\\b"
 
-- label: "Calefacción"
+- label: "Recibo comunidad"
   patterns:
-    - "AGENCIA VILLAR|CALEFAC"
+    - "AGENCIA VILLAR"
 
-- label: "Teléfono / Internet"
+- label: "Recibo calefacción"
+  patterns:
+    - "CALEFAC"
+
+- label: "Recibo teléfono e internet"
   patterns:
     - "PEPEPHONE|MOVISTAR|VODAFONE|ORANGE|YOIGO|DIGI\\b|MASMOVIL"
 
@@ -152,11 +156,11 @@
 
 - label: "Restaurante"
   patterns:
-    - "RESTAURANTE|WOK TOWN|SUPERTROPICAL|VIPS|A FUEGO LENTO|SABORES|ADELIA|MAMBARA|GINOS|LA MARIPEPA|LOS SECRETOS|LA NEGRA|VERMUTERIA|PIK POLLO|COSTA VELLA|GALIA|SOU SHUSHI|SUSHI|ROYAL KEBAB|ASIAN POCKET"
+    - "RESTAURANTE|WOK TOWN|SUPERTROPICAL|VIPS|A FUEGO LENTO|ADELIA|MAMBARA|GINOS|LA MARIPEPA|LOS SECRETOS|LA NEGRA|VERMUTERIA|PIK POLLO|COSTA VELLA|GALIA|SOU SHUSHI|SUSHI|ROYAL KEBAB|ASIAN POCKET"
 
 - label: "Cafetería"
   patterns:
-    - "\\bCAFE\\b|\\bCAFETERIA\\b|COFFEE|BOANDGO|FORNO|GRANIER|MOLLETE|TOSTA|BAKERY|CHURRERIA"
+    - "\\bCAFE\\b|\\bCAFETERIA\\b|COFFEE|BOANDGO|FORNO|GRANIER|SABORES|MOLLETE|TOSTA|BAKERY|CHURRERIA"
 
 - label: "Bar"
   patterns:
@@ -190,6 +194,10 @@
 - label: "Transporte público"
   patterns:
     - "RENFE|ALSA|\\bAVE\\b|\\bBUS\\b|\\bMETRO\\b|CONCELLO DE SAN|\\bTRAM\\b"
+
+- label: "Parking zonal azul"
+  patterns:
+    - "CONCELLO DE SAN"
 
 - label: "Peajes"
   patterns:

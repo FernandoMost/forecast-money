@@ -1,9 +1,21 @@
 // lib/api.ts — typed API client for the FastAPI backend
+//
+// Authentication uses httpOnly cookies (set by the backend on login/register).
+// All fetch calls include credentials: "include" so the browser sends the cookie
+// automatically. No token storage in JS code — the cookie is invisible to JS.
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
 
+// ---------------------------------------------------------------------------
+// Base fetch helpers — all include credentials for cookie-based auth
+// ---------------------------------------------------------------------------
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
+  const res = await fetch(`${BASE}${path}`, {
+    cache: "no-store",
+    credentials: "include",
+  });
+  if (res.status === 401) throw new AuthError();
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`API ${path} → ${res.status}: ${err}`);
@@ -11,8 +23,13 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function post<T>(path: string, body: FormData): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "POST", body });
+async function post<T>(path: string, body: FormData | null): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    body: body ?? undefined,
+    credentials: "include",
+  });
+  if (res.status === 401) throw new AuthError();
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`API ${path} → ${res.status}: ${err}`);
@@ -20,7 +37,64 @@ async function post<T>(path: string, body: FormData): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// --- Types ---
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "include",
+  });
+  if (res.status === 401) throw new AuthError();
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`API POST ${path} → ${res.status}: ${err}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "include",
+  });
+  if (res.status === 401) throw new AuthError();
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`API PATCH ${path} → ${res.status}: ${err}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (res.status === 401) throw new AuthError();
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`API DELETE ${path} → ${res.status}: ${err}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+// ---------------------------------------------------------------------------
+// Auth error — thrown when the server returns 401
+// Components / middleware can catch this to redirect to /login
+// ---------------------------------------------------------------------------
+
+export class AuthError extends Error {
+  constructor() {
+    super("Not authenticated");
+    this.name = "AuthError";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export interface CategoryBreakdown {
   category: string;
@@ -76,12 +150,8 @@ export interface RuleResult {
   details: Record<string, unknown>;
 }
 
-export interface Alert {
-  rule_id: string;
-  name: string;
-  status: "green" | "amber" | "red";
-  message: string;
-}
+// Alert is a RuleResult — same shape, just filtered to amber/red by the backend
+export type Alert = RuleResult;
 
 export interface HealthScore {
   overall_score: number;
@@ -128,6 +198,55 @@ export interface PatchTransactionResponse {
   category_source: string | null;
 }
 
+// --- Category types ---
+
+export type CategoryRole = "needs" | "wants" | "leisure" | "fixed" | "subscriptions" | "savings" | "income" | "other";
+
+export interface CategoryItem {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  color: string | null;
+  role: CategoryRole | null;
+  position: number;
+  created_at: string | null;
+}
+
+export interface CategoryWithChildren {
+  id: string;
+  name: string;
+  color: string | null;
+  role: CategoryRole | null;
+  position: number;
+  created_at: string | null;
+  subcategories: CategoryItem[];
+}
+
+export interface CategoryListResponse {
+  categories: CategoryWithChildren[];
+}
+
+export interface CategoryCreateRequest {
+  id: string;
+  name: string;
+  parent_id?: string | null;
+  color?: string | null;
+  role?: CategoryRole | null;
+  position?: number;
+}
+
+export interface CategoryUpdateRequest {
+  name?: string | null;
+  color?: string | null;
+  role?: CategoryRole | null;
+  position?: number | null;
+}
+
+export interface CategoryDeleteResponse {
+  deleted_categories: number;
+  affected_transactions: number;
+}
+
 // --- Dashboard types ---
 
 export interface MonthSummaryForDashboard {
@@ -164,13 +283,54 @@ export interface DashboardData {
   health: HealthScore;
 }
 
-// --- API calls ---
+// --- Health score history ---
+
+export interface HealthScoreHistoryEntry {
+  id: string;
+  recorded_at: string;
+  import_id: string | null;
+  overall_score: number;
+  grade: string;
+  rule_scores: Record<string, number>;
+}
+
+export interface HealthScoreHistoryResponse {
+  history: HealthScoreHistoryEntry[];
+}
+
+// --- Auth types ---
+
+export interface UserOut {
+  id: string;
+  email: string;
+  name: string | null;
+  is_active: boolean;
+}
+
+export interface AuthResponse {
+  message: string;
+  user: UserOut;
+}
+
+// ---------------------------------------------------------------------------
+// API calls
+// ---------------------------------------------------------------------------
 
 export const api = {
+  // --- Auth (no credentials needed for login/register — they set the cookie) ---
+  login: (email: string, password: string) =>
+    postJson<AuthResponse>("/auth/login", { email, password }),
+  register: (email: string, password: string, name?: string) =>
+    postJson<AuthResponse>("/auth/register", { email, password, name }),
+  logout: () => post<{ message: string }>("/auth/logout", null),
+  me: () => get<UserOut>("/auth/me"),
+
+  // --- Finance endpoints (all require auth cookie) ---
   health: () => get<{ status: string; available_months: string[]; total_transactions: number }>("/health"),
   months: () => get<{ months: string[] }>("/months"),
   summary: (month: string) => get<MonthlySummary>(`/summary/${month}`),
   healthScore: () => get<HealthScore>("/health-score"),
+  healthHistory: (limit = 50) => get<HealthScoreHistoryResponse>(`/health-history?limit=${limit}`),
   dashboard: () => get<DashboardData>("/dashboard"),
   transactions: (params?: { month?: string; year?: number; category?: string; subcategory?: string; sort_by?: string; sort_dir?: "asc" | "desc"; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
@@ -191,22 +351,16 @@ export const api = {
     form.append("use_ai", String(useAi));
     return post<UploadResponse>("/upload", form);
   },
-  recategorize: (useAi = false) => {
-    const form = new FormData();
-    return post<RecategorizeResponse>(`/recategorize?use_ai=${useAi}`, form);
-  },
-  patchTransaction: (id: string, data: PatchTransactionRequest) => {
-    const res = fetch(`${BASE}/transactions/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    }).then(async (r) => {
-      if (!r.ok) {
-        const err = await r.text();
-        throw new Error(`PATCH /transactions/${id} → ${r.status}: ${err}`);
-      }
-      return r.json() as Promise<PatchTransactionResponse>;
-    });
-    return res;
-  },
+  recategorize: (useAi = false) =>
+    post<RecategorizeResponse>(`/recategorize?use_ai=${useAi}`, null),
+  patchTransaction: (id: string, data: PatchTransactionRequest) =>
+    patchJson<PatchTransactionResponse>(`/transactions/${id}`, data),
+  // Categories CRUD
+  categories: () => get<CategoryListResponse>("/categories"),
+  createCategory: (data: CategoryCreateRequest) =>
+    postJson<CategoryItem>("/categories", data),
+  updateCategory: (id: string, data: CategoryUpdateRequest) =>
+    patchJson<CategoryItem>(`/categories/${id}`, data),
+  deleteCategory: (id: string) =>
+    del<CategoryDeleteResponse>(`/categories/${id}`),
 };

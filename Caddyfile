@@ -1,0 +1,37 @@
+# Caddyfile — reverse proxy for Forecast Money on VPS
+#
+# Replace "yourdomain.com" with your actual domain.
+# Caddy will automatically obtain and renew a Let's Encrypt TLS certificate.
+#
+# API requests (/api/v1/*) go to the FastAPI backend.
+# Everything else goes to the Next.js frontend.
+
+yourdomain.com {
+    # Backend API
+    handle /api/v1/* {
+        reverse_proxy backend:8000
+    }
+
+    # Next.js frontend (catch-all)
+    handle {
+        reverse_proxy frontend:3000
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # Allow service worker scope
+        -Server
+    }
+
+    # Logging
+    log {
+        output file /data/access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}

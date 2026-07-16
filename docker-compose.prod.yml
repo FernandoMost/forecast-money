@@ -1,0 +1,55 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# docker-compose.prod.yml — production overrides for VPS deployment.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Before running, create backend/.env.prod with:
+#   SECRET_KEY=<64-char random string>
+#   COOKIE_SECURE=true
+#   ALLOWED_ORIGINS=https://yourdomain.com
+# ---------------------------------------------------------------------------
+
+services:
+  backend:
+    restart: unless-stopped
+    ports: []          # Not exposed directly — Caddy proxies to it
+    expose:
+      - "8000"
+    env_file:
+      - path: ./backend/.env.prod
+        required: true
+    environment:
+      DATA_DIR: /app/backend/data
+      COOKIE_SECURE: "true"
+
+  frontend:
+    restart: unless-stopped
+    ports: []          # Not exposed directly — Caddy proxies to it
+    expose:
+      - "3000"
+    environment:
+      # In production, the browser talks to the same origin (Caddy handles routing).
+      # /api/v1 is proxied by Caddy to the backend container.
+      NEXT_PUBLIC_API_URL: /api/v1
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  caddy_data:
+  caddy_config:

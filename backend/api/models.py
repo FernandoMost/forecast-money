@@ -94,6 +94,73 @@ class PatchTransactionResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Categories
+# ---------------------------------------------------------------------------
+
+class CategoryItem(BaseModel):
+    id: str
+    name: str
+    parent_id: str | None
+    color: str | None
+    role: str | None
+    position: int
+    created_at: str | None = None
+
+
+class CategoryWithChildren(BaseModel):
+    """Top-level category with its subcategories nested."""
+    id: str
+    name: str
+    color: str | None
+    role: str | None
+    position: int
+    created_at: str | None = None
+    subcategories: list[CategoryItem] = Field(default_factory=list)
+
+
+class CategoryListResponse(BaseModel):
+    categories: list[CategoryWithChildren]
+
+
+class CategoryCreateRequest(BaseModel):
+    id: str = Field(..., description="Slug identifier (e.g. 'housing', 'rent'). Must be unique.")
+    name: str = Field(..., description="Human-readable label.")
+    parent_id: str | None = Field(None, description="Parent category id. NULL means top-level.")
+    color: str | None = Field(None, description="Hex color (top-level only, e.g. '#6366f1').")
+    role: str | None = Field(None, description="Financial role: needs|wants|leisure|fixed|savings|income|other")
+    position: int = Field(0, description="Display order within its level.")
+
+
+class CategoryUpdateRequest(BaseModel):
+    name: str | None = None
+    color: str | None = None
+    role: str | None = None
+    position: int | None = None
+
+
+class CategoryDeleteResponse(BaseModel):
+    deleted_categories: int
+    affected_transactions: int
+
+
+# ---------------------------------------------------------------------------
+# Health score history
+# ---------------------------------------------------------------------------
+
+class HealthScoreHistoryEntry(BaseModel):
+    id: str
+    recorded_at: str
+    import_id: str | None
+    overall_score: float
+    grade: str
+    rule_scores: dict[str, float]
+
+
+class HealthScoreHistoryResponse(BaseModel):
+    history: list[HealthScoreHistoryEntry]
+
+
+# ---------------------------------------------------------------------------
 # Health score
 # ---------------------------------------------------------------------------
 
@@ -111,6 +178,7 @@ class AlertModel(BaseModel):
     name: str
     status: str
     message: str
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class HealthScoreResponse(BaseModel):
@@ -161,7 +229,7 @@ class MonthSummaryForDashboard(BaseModel):
     max_balance: float
     last_balance: float | None          # balance of the last transaction in this month
     last_balance_date: str | None       # date of that transaction (YYYY-MM-DD)
-    leisure_spent: float                # restaurants + entertainment
+    leisure_spent: float                # sum of all categories with role='leisure'
     leisure_budget: float               # income * 20%
     leisure_remaining: float            # leisure_budget - leisure_spent
     days_of_data: int                   # span of dates with transactions
