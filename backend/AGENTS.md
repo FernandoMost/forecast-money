@@ -23,13 +23,16 @@ xlsx/csv → BankParser → RawTransaction → normalize() → categorize_transa
 ## Key files
 | File | Role |
 |---|---|
-| `main.py` | FastAPI app, CORS config |
-| `api/routes.py` | All endpoints — read this first |
-| `api/deps.py` | Settings (pydantic-settings), `get_store()` |
+| `main.py` | FastAPI app, CORS config, startup migration (YAML → shared.db) |
+| `api/routes.py` | All finance endpoints — read this first |
+| `api/description_rules.py` | CRUD for description rules + suggestion engine |
+| `api/deps.py` | Settings (pydantic-settings), `get_store()`, `get_shared_store()` |
 | `api/models.py` | Pydantic request/response models — source of truth for shapes |
-| `db/sqlite_store.py` | All DB access — single source of truth for schema |
+| `db/sqlite_store.py` | Per-user DB access — single source of truth for schema |
+| `db/shared_store.py` | Shared DB — `description_rules` table, YAML migration |
+| `db/user_store.py` | Auth DB — `users` table |
 | `categorizer/rule_categorizer.py` | Loads `config/category_rules.yaml` |
-| `categorizer/description_cleaner.py` | Loads `config/clean_description_rules.yaml` |
+| `categorizer/description_cleaner.py` | Loads rules from `data/shared.db` (NOT YAML) |
 | `categorizer/ai_categorizer.py` | Ollama wrapper — rules first, AI only for unknowns |
 | `parser/bank_parser.py` | Config-driven xlsx+csv parser |
 | `parser/normalizer.py` | `RawTransaction` → normalized dict |
@@ -41,13 +44,19 @@ xlsx/csv → BankParser → RawTransaction → normalize() → categorize_transa
 | `POST` | `/api/v1/upload` | `file`, `bank`, `use_ai` | accepts `.xlsx` and `.csv` |
 | `GET` | `/api/v1/dashboard` | — | health score + primary/secondary month enriched summary + staleness |
 | `GET` | `/api/v1/transactions` | `month`, `year`, `category`, `subcategory`, `sort_by`, `sort_dir`, `limit`, `offset` | paginated; returns `total`, `amount_total`, `items` |
-| `PATCH` | `/api/v1/transactions/{id}` | `clean_description`, `category`, `subcategory` | sets `_source='manual'` |
+| `PATCH` | `/api/v1/transactions/{id}` | `clean_description`, `category`, `subcategory` | sets `_source='manual'`; uses COALESCE — omitted fields are preserved |
 | `GET` | `/api/v1/summary/{month}` | — | monthly income/expenses/savings/by_category |
 | `GET` | `/api/v1/health-score` | — | 7-rule analysis |
 | `GET` | `/api/v1/months` | — | available months list |
 | `GET` | `/api/v1/health` | — | API status check |
-| `POST` | `/api/v1/recategorize` | `use_ai` | hot-reloads YAML rules, re-applies to all transactions |
+| `POST` | `/api/v1/recategorize` | `use_ai` | hot-reloads rules, re-applies to all transactions; preserves `source=manual` |
 | `DELETE` | `/api/v1/data` | — | wipe all transactions and imports |
+| `GET` | `/api/v1/description-rules` | — | list rules with match counts |
+| `POST` | `/api/v1/description-rules` | `label`, `patterns`, `position` | add rule to shared.db |
+| `PUT` | `/api/v1/description-rules/{label}` | `new_label`, `patterns` | update rule |
+| `DELETE` | `/api/v1/description-rules/{label}` | — | delete rule |
+| `GET` | `/api/v1/description-suggestions` | `limit` | grouped uncleaned descriptions with suggested label+patterns |
+| `POST` | `/api/v1/description-rules/apply` | `rules[]` | save rules + recategorize in one call |
 
 ## sqlite_store.get_transactions() signature
 ```python
@@ -60,11 +69,13 @@ get_transactions(
 `total` and `amount_total` are for the full (unpaginated) query — use them for pagination controls and footers.
 
 ## Paths
-- DB: `backend/data/finance.db` (gitignored, recreated on first run)
+- Per-user DB: `backend/data/users/{user_id}.db`
+- Shared DB: `backend/data/shared.db` ← description_rules live here
+- Auth DB: `backend/data/auth.db`
 - AI cache: `backend/data/category_cache.db`
 - Bank configs: `banks/*.yaml`
 - Category rules: `config/category_rules.yaml`
-- Clean description rules: `config/clean_description_rules.yaml`
+- Clean description rules: `config/clean_description_rules.yaml` ← LEGACY, migrated to shared.db on startup
 
 ## Categorization priority (ai_categorizer.py)
 1. Rules (`rule_categorizer` + `description_cleaner`) — if any match, stop here
@@ -75,12 +86,12 @@ get_transactions(
 ## `category_source` / `clean_description_source` values
 | Value | Meaning |
 |---|---|
-| `rule` | Matched a rule in the YAML (default/silent) |
+| `rule` | Matched a rule in shared.db (default/silent — no badge in UI) |
 | `ai` | Set by Ollama |
 | `cache` | From previous AI session cache |
 | `manual` | Set by the user via `PATCH /transactions/{id}` |
 
-## Schema — transactions table
+## Schema — transactions table (per-user DB)
 ```
 id, import_id, bank_id, date, date_value, description,
 clean_description, clean_description_source,
@@ -89,10 +100,13 @@ category, subcategory, category_source,
 month, year, raw_json
 ```
 
-## After editing YAML rules
-```bash
-curl -X POST http://localhost:8000/api/v1/recategorize
-# or with AI for unmatched:
-curl -X POST "http://localhost:8000/api/v1/recategorize?use_ai=true"
+## Schema — description_rules table (shared.db)
 ```
-Server reloads the YAML on each call — no restart needed.
+id (autoincrement), label (unique), patterns (JSON array), position, created_at, updated_at
+```
+
+## Key behaviours to remember
+- `bulk_update_categories()` (recategorize) **preserves** rows with `source='manual'` — uses CASE WHEN
+- `update_transaction_manual()` uses `COALESCE(?, field)` for all fields — omitting a field is a no-op
+- Description rules are loaded into memory at startup and reloaded via `reload_rules()` after any CRUD op
+- Startup event in `main.py` auto-migrates YAML → shared.db if the table is empty (one-shot)

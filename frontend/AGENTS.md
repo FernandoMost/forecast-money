@@ -9,34 +9,68 @@
 ## Routes
 | Path | File | Type | Notes |
 |---|---|---|---|
-| `/` | `app/page.tsx` | Server Component | Dashboard — calls `api.dashboard()` |
+| `/` | `app/page.tsx` | Client Component | Dashboard |
 | `/transactions` | `app/transactions/page.tsx` | Client Component | TanStack Table, sort/filter/paginate |
-| `/trends` | `app/trends/page.tsx` | — | Trends view |
-| `/upload` | `app/upload/page.tsx` | — | Statement upload |
+| `/trends` | `app/trends/page.tsx` | Client Component | Trends view |
+| `/upload` | `app/upload/page.tsx` | Client Component | Statement upload |
+| `/health` | `app/health/page.tsx` | Client Component | Financial health score + rules |
+| `/categories` | `app/categories/page.tsx` | Client Component | Category CRUD |
+| `/rules` | `app/rules/page.tsx` | Client Component | Description rules CRUD + suggestion engine |
+| `/login` | `app/login/page.tsx` | Client Component | Auth |
 
 ## Key files
 | File | Role |
 |---|---|
 | `lib/api.ts` | Typed API client — all fetch calls go here |
-| `lib/utils.ts` | `formatEur()`, `formatPercent()`, `STATUS_COLORS`, `CATEGORY_COLORS` |
+| `lib/utils.ts` | `formatEur()`, `formatPercent()`, `formatDate()`, `formatMonth()`, `toIntlLocale()`, `STATUS_COLORS` |
+| `lib/i18n.tsx` | i18n context — `useT()` returns `{ t, locale, setLocale }` |
+| `lib/theme.tsx` | Dark mode — `useTheme()` returns `{ isDark, toggleTheme }` |
+| `lib/translateRule.ts` | Translates health rule IDs + details into localised strings |
 | `components/Nav.tsx` | Top navigation bar |
 | `components/CategoryTree.tsx` | Reusable category+subcategory pill selector; also exports `CATEGORY_TREE`, `catLabel()`, `subLabel()` |
+| `components/Providers.tsx` | Wraps app with i18n + theme providers |
+| `messages/es.json` | Spanish strings — sections: nav, dashboard, transactions, health, categories, rules (financial), rulesPage (UI) |
+| `messages/en.json` | English strings — same sections |
 
 ## `lib/api.ts` — key types and calls
 ```typescript
 api.dashboard()              // GET /dashboard → DashboardData
 api.transactions(params)     // GET /transactions → TransactionList
-  // params: month, year, category, subcategory, sort_by, sort_dir, limit, offset
 api.patchTransaction(id, {   // PATCH /transactions/{id}
-  clean_description, category, subcategory
+  clean_description, category, subcategory   // all optional — omit to preserve
 })
 api.months()                 // GET /months → { months: string[] }
 api.summary(month)           // GET /summary/{month} → MonthlySummary
 api.upload(file, bank, useAi)
 api.recategorize(useAi)
+// Description rules:
+api.descriptionRules()                                    // GET /description-rules
+api.createDescriptionRule(label, patterns, position?)     // POST
+api.updateDescriptionRule(label, { new_label?, patterns? }) // PUT
+api.deleteDescriptionRule(label)                          // DELETE
+api.descriptionSuggestions(limit?)                        // GET /description-suggestions
+api.applyDescriptionRules(rules[])                        // POST /description-rules/apply
 ```
 
 `TransactionList` shape: `{ total, amount_total, limit, offset, items[] }` — `total` and `amount_total` cover the **full unpaginated query**, not just the current page.
+
+## Date formatting — ALWAYS use these, never raw ISO strings
+```typescript
+import { formatDate, formatMonth, toIntlLocale } from "@/lib/utils";
+const { locale } = useT();
+const intlLocale = toIntlLocale(locale);  // "es" → "es-ES", "en" → "en-GB"
+
+formatDate("2024-05-12", intlLocale)   // "12 mayo 2024" / "12 May 2024"
+formatMonth("2024-05", intlLocale)     // "mayo 2024" / "May 2024"
+```
+**Never** render raw `YYYY-MM-DD` or `YYYY-MM` strings to the user.
+
+## i18n — important key collision warning
+The `messages/*.json` files have TWO top-level sections that look like "rules":
+- `"rules"` — financial health rule translations (savings_rate, emergency_fund, etc.) — used by `translateRule.ts`
+- `"rulesPage"` — UI strings for the `/rules` page (title, tabRules, addRule, etc.)
+
+**Do NOT rename or merge these.** Adding a second `"rules"` key would silently overwrite the financial rules translations (JSON duplicate key bug — already fixed once).
 
 ## CategoryTree component
 ```tsx
