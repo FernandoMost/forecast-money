@@ -580,6 +580,7 @@ class SqliteStore:
         category: str | None = None,
         subcategory: str | None = None,
         bank_id: str | None = None,
+        clean_description: str | None = None,
         sort_by: str = "date",
         sort_dir: str = "desc",
         limit: int = 100,
@@ -616,6 +617,9 @@ class SqliteStore:
         if bank_id:
             conditions.append("bank_id = ?")
             params.append(bank_id)
+        if clean_description is not None:
+            conditions.append("clean_description = ?")
+            params.append(clean_description)
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

@@ -9,8 +9,10 @@ import {
   RuleListResponse,
   StripConfigEntry,
   StripSuggestion,
+  Transaction,
 } from "@/lib/api";
 import { useT } from "@/lib/i18n";
+import { formatDate, formatEur } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -113,6 +115,95 @@ function PatternInput({
 }
 
 // ---------------------------------------------------------------------------
+// RuleTransactions — paginated list of transactions matching a rule
+// ---------------------------------------------------------------------------
+
+const PAGE_SIZE = 10;
+
+function RuleTransactions({ label }: { label: string }) {
+  const { t } = useT();
+  const [page, setPage] = useState(0);
+  const [items, setItems] = useState<Transaction[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api
+      .transactions({
+        clean_description: label,
+        sort_by: "date",
+        sort_dir: "desc",
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      })
+      .then((data) => {
+        setItems(data.items);
+        setTotal(data.total);
+      })
+      .finally(() => setLoading(false));
+  }, [label, page]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  return (
+    <div className="border-t border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/40 dark:bg-indigo-950/20 px-4 py-3">
+      {loading ? (
+        <p className="text-xs text-gray-400 py-2">{t("rulesPage.loading")}</p>
+      ) : items.length === 0 ? (
+        <p className="text-xs text-gray-400 py-2">{t("rulesPage.ruleTxNoMatches")}</p>
+      ) : (
+        <>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                <th className="text-left pb-1.5 font-medium">{t("rulesPage.ruleTxDate")}</th>
+                <th className="text-right pb-1.5 font-medium">{t("rulesPage.ruleTxAmount")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((tx) => (
+                <tr
+                  key={tx.id}
+                  className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-white/60 dark:hover:bg-gray-800/30"
+                >
+                  <td className="py-1.5 text-gray-600 dark:text-gray-300">{formatDate(tx.date)}</td>
+                  <td className={`py-1.5 text-right font-mono font-medium ${tx.amount < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                    {formatEur(tx.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+              <button
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {t("rulesPage.ruleTxPrev")}
+              </button>
+              <span className="text-xs text-gray-400">
+                {t("rulesPage.ruleTxPage")
+                  .replace("{page}", String(page + 1))
+                  .replace("{total}", String(totalPages))}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+                className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {t("rulesPage.ruleTxNext")}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // RuleRow — existing rule with inline edit
 // ---------------------------------------------------------------------------
 
@@ -127,6 +218,7 @@ function RuleRow({
 }) {
   const { t } = useT();
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [label, setLabel] = useState(rule.label);
   const [patterns, setPatterns] = useState<string[]>(rule.patterns);
   const [saving, setSaving] = useState(false);
@@ -172,30 +264,42 @@ function RuleRow({
 
   if (!editing) {
     return (
-      <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 group border-b border-gray-100 dark:border-gray-800 last:border-0">
-        <StatusBadge n={rule.match_count} />
-        <span className="font-medium text-sm text-gray-800 dark:text-gray-100 w-44 shrink-0 truncate">
-          {rule.label}
-        </span>
-        <div className="flex flex-wrap gap-1 flex-1 min-w-0">
-          {rule.patterns.map((p, i) => (
-            <PatternTag key={i} value={p} />
-          ))}
-        </div>
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-          <button
-            onClick={() => setEditing(true)}
-            className="text-xs px-2 py-1 rounded text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+      <div className="border-b border-gray-100 dark:border-gray-800 last:border-0">
+        <div
+          className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 group cursor-pointer select-none"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <span className="text-gray-300 dark:text-gray-600 shrink-0 w-3 text-center text-xs">
+            {expanded ? "▾" : "▸"}
+          </span>
+          <StatusBadge n={rule.match_count} />
+          <span className="font-medium text-sm text-gray-800 dark:text-gray-100 w-44 shrink-0 truncate">
+            {rule.label}
+          </span>
+          <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+            {rule.patterns.map((p, i) => (
+              <PatternTag key={i} value={p} />
+            ))}
+          </div>
+          <div
+            className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+            onClick={(e) => e.stopPropagation()}
           >
-            {t("rulesPage.edit")}
-          </button>
-          <button
-            onClick={remove}
-            className="text-xs px-2 py-1 rounded text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-          >
-            {t("rulesPage.delete")}
-          </button>
+            <button
+              onClick={() => setEditing(true)}
+              className="text-xs px-2 py-1 rounded text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              {t("rulesPage.edit")}
+            </button>
+            <button
+              onClick={remove}
+              className="text-xs px-2 py-1 rounded text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+            >
+              {t("rulesPage.delete")}
+            </button>
+          </div>
         </div>
+        {expanded && rule.match_count > 0 && <RuleTransactions label={rule.label} />}
       </div>
     );
   }
@@ -918,11 +1022,13 @@ export default function RulesPage() {
     }
   }
 
-  const filteredRules = rules.filter(
-    (r) =>
-      r.label.toLowerCase().includes(search.toLowerCase()) ||
-      r.patterns.some((p) => p.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filteredRules = rules
+    .filter(
+      (r) =>
+        r.label.toLowerCase().includes(search.toLowerCase()) ||
+        r.patterns.some((p) => p.toLowerCase().includes(search.toLowerCase()))
+    )
+    .sort((a, b) => b.match_count - a.match_count);
 
   const visibleSuggestions = suggestions.filter(
     (g) => !dismissedCanonicals.has(g.canonical)

@@ -442,12 +442,13 @@ export const api = {
   healthScore: () => get<HealthScore>("/health-score"),
   healthHistory: (limit = 50) => get<HealthScoreHistoryResponse>(`/health-history?limit=${limit}`),
   dashboard: () => get<DashboardData>("/dashboard"),
-  transactions: (params?: { month?: string; year?: number; category?: string; subcategory?: string; sort_by?: string; sort_dir?: "asc" | "desc"; limit?: number; offset?: number }) => {
+  transactions: (params?: { month?: string; year?: number; category?: string; subcategory?: string; clean_description?: string; sort_by?: string; sort_dir?: "asc" | "desc"; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
     if (params?.month) qs.set("month", params.month);
     if (params?.year) qs.set("year", String(params.year));
     if (params?.category) qs.set("category", params.category);
     if (params?.subcategory) qs.set("subcategory", params.subcategory);
+    if (params?.clean_description != null) qs.set("clean_description", params.clean_description);
     if (params?.sort_by) qs.set("sort_by", params.sort_by);
     if (params?.sort_dir) qs.set("sort_dir", params.sort_dir);
     if (params?.limit != null) qs.set("limit", String(params.limit));

@@ -348,6 +348,7 @@ def list_transactions(
     category: str | None = Query(None, description="Filter by category"),
     subcategory: str | None = Query(None, description="Filter by subcategory"),
     bank_id: str | None = Query(None, description="Filter by bank"),
+    clean_description: str | None = Query(None, description="Filter by exact clean_description (rule label)"),
     sort_by: str = Query("date", description="Column to sort by: date|amount|balance|description|category|month"),
     sort_dir: str = Query("desc", description="Sort direction: asc|desc"),
     limit: int = Query(100, ge=1, le=1000),
@@ -356,7 +357,8 @@ def list_transactions(
 ):
     result = store.get_transactions(
         month=month, year=year, category=category, subcategory=subcategory,
-        bank_id=bank_id, sort_by=sort_by, sort_dir=sort_dir,
+        bank_id=bank_id, clean_description=clean_description,
+        sort_by=sort_by, sort_dir=sort_dir,
         limit=limit, offset=offset,
     )
     for item in result["items"]:
