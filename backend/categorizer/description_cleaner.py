@@ -205,6 +205,78 @@ def apply_strip_config(description: str, strip_config: list[dict]) -> str:
     return result or description  # never return an empty string
 
 
+# ---------------------------------------------------------------------------
+# Structured Bizum parser
+# ---------------------------------------------------------------------------
+
+# BIZUM A FAVOR DE <name> CONCEPTO[:]  <concept>   (outgoing — amount < 0)
+_BIZUM_OUT_RE = re.compile(
+    r'^BIZUM\s+A\s+FAVOR\s+DE\s+(.+?)\s+CONCEPTO:?\s+(.+)$',
+    re.IGNORECASE,
+)
+# BIZUM A FAVOR DE <name>  (outgoing, no concept)
+_BIZUM_OUT_BARE_RE = re.compile(
+    r'^BIZUM\s+A\s+FAVOR\s+DE\s+(.+)$',
+    re.IGNORECASE,
+)
+# BIZUM DE <name> CONCEPTO[:]  <concept>   (incoming — amount > 0)
+_BIZUM_IN_RE = re.compile(
+    r'^BIZUM\s+DE\s+(.+?)\s+CONCEPTO:?\s+(.+)$',
+    re.IGNORECASE,
+)
+# BIZUM DE <name>  (incoming, no concept)
+_BIZUM_IN_BARE_RE = re.compile(
+    r'^BIZUM\s+DE\s+(.+)$',
+    re.IGNORECASE,
+)
+
+
+def _first_name(full: str) -> str:
+    """Return the first token of a full name, title-cased (forces capitalisation)."""
+    token = full.strip().split()[0]
+    return token.capitalize()
+
+
+def _parse_bizum(description: str) -> str | None:
+    """
+    Parse structured Santander Bizum descriptions into a human-friendly label.
+
+    Handles four cases:
+      - Outgoing with concept  → "<Concept> (para <FirstName>)"
+      - Outgoing bare          → "Transferencia (para <FirstName>)"
+      - Incoming with concept  → "<Concept> (de <FirstName>)"
+      - Incoming bare          → "Transferencia (de <FirstName>)"
+
+    Returns None if the description does not look like a Bizum transaction.
+    The concept text is capitalised (first letter upper, rest preserved).
+    """
+    m = _BIZUM_OUT_RE.match(description)
+    if m:
+        name = _first_name(m.group(1))
+        concept = m.group(2).strip()
+        concept = concept[0].upper() + concept[1:] if concept else "Transferencia"
+        return f"{concept} (para {name})"
+
+    m = _BIZUM_OUT_BARE_RE.match(description)
+    if m:
+        name = _first_name(m.group(1))
+        return f"Transferencia (para {name})"
+
+    m = _BIZUM_IN_RE.match(description)
+    if m:
+        name = _first_name(m.group(1))
+        concept = m.group(2).strip()
+        concept = concept[0].upper() + concept[1:] if concept else "Transferencia"
+        return f"{concept} (de {name})"
+
+    m = _BIZUM_IN_BARE_RE.match(description)
+    if m:
+        name = _first_name(m.group(1))
+        return f"Transferencia (de {name})"
+
+    return None
+
+
 def clean_description(description: str) -> str | None:
     """
     Returns a short human-friendly label for a (possibly pre-stripped) bank description.
@@ -225,10 +297,21 @@ def clean_transaction(tx: dict, strip_config: list[dict] | None = None) -> dict:
     result is stored as stripped_description.  The regex rules then run on that
     stripped value.  If strip_config is not provided (or empty) stripped_description
     is set to the raw description (i.e. no change).
+
+    For Santander transactions, a structured Bizum parser runs before the regex rules
+    and produces labels like "Piscina y cena (para Lucia)" or "Transferencia (de Jesus)".
     """
     raw = tx["description"]
     stripped = apply_strip_config(raw, strip_config) if strip_config else raw
-    label = clean_description(stripped)
+
+    label: str | None = None
+    # Structured Bizum parser — only for Santander, takes priority over regex rules
+    if tx.get("bank_id") == "santander":
+        label = _parse_bizum(stripped)
+
+    if label is None:
+        label = clean_description(stripped)
+
     return {
         **tx,
         "stripped_description": stripped,
