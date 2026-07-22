@@ -75,6 +75,16 @@ class BankParser:
     # Public API
     # ------------------------------------------------------------------
 
+    @property
+    def strip_description_prefixes(self) -> list[str]:
+        """Prefixes to strip from transaction descriptions before rule matching.
+
+        Configured via `parsing.strip_description_prefixes` in the bank YAML.
+        Example use case: "PAGO MOVIL EN MERCADONA" → "MERCADONA" so that
+        existing description/category rules match without knowing the payment method.
+        """
+        return self._cfg.get("parsing", {}).get("strip_description_prefixes", [])
+
     def parse(self, file_path: str | Path) -> ParseResult:
         extension = self._cfg.get("file", {}).get("extension", "xlsx").lower()
         if extension == "csv":

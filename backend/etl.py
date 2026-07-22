@@ -57,7 +57,7 @@ def run_etl(
     # ---------------------------------------------------------------
     # 2. Normalize
     # ---------------------------------------------------------------
-    normalized = [normalize(raw, meta.bank_id) for raw in result.transactions]
+    normalized = [normalize(raw, meta.bank_id, parser.strip_description_prefixes) for raw in result.transactions]
     print(f"[ETL] Normalized {len(normalized)} transactions.")
 
     # ---------------------------------------------------------------

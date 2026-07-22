@@ -47,3 +47,8 @@ parsing:
   reversal_prefix: "ANULACION"
   # Minimum non-null columns for a row to be considered a valid transaction
   min_valid_columns: 4
+  # Prefixes stripped from the description before rule matching.
+  # The original description is still used to compute the transaction ID (deduplication).
+  # Example: "PAGO MOVIL EN MERCADONA 0312 VIGO" → "MERCADONA 0312 VIGO"
+  strip_description_prefixes:
+    - "PAGO MOVIL EN "

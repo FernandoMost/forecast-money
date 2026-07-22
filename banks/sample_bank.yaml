@@ -81,3 +81,10 @@ parsing:
   # Minimum number of non-empty columns for a row to be considered a valid transaction.
   # Rows below this threshold are silently skipped (catches blank lines, subtotals, etc.)
   min_valid_columns: 3
+
+  # Optional: prefixes to strip from the description before rule matching.
+  # The raw description is still used for ID computation (deduplication is unaffected).
+  # Useful for banks that prepend payment-method metadata to the merchant name.
+  # Example: "PAGO MOVIL EN MERCADONA 0312" → "MERCADONA 0312"
+  # strip_description_prefixes:
+  #   - "PAGO MOVIL EN "
