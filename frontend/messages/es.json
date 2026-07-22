@@ -346,6 +346,7 @@
     "colLabel": "Nombre",
     "colPatterns": "Patrones (regex, case-insensitive)",
     "ruleTxDate": "Fecha",
+    "ruleTxDesc": "Descripción original",
     "ruleTxAmount": "Importe",
     "ruleTxNoMatches": "Sin transacciones que coincidan.",
     "ruleTxPrev": "Anterior",

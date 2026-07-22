@@ -158,6 +158,7 @@ function RuleTransactions({ label }: { label: string }) {
             <thead>
               <tr className="text-gray-400 border-b border-gray-200 dark:border-gray-700">
                 <th className="text-left pb-1.5 font-medium">{t("rulesPage.ruleTxDate")}</th>
+                <th className="text-left pb-1.5 font-medium pl-4">{t("rulesPage.ruleTxDesc")}</th>
                 <th className="text-right pb-1.5 font-medium">{t("rulesPage.ruleTxAmount")}</th>
               </tr>
             </thead>
@@ -167,8 +168,9 @@ function RuleTransactions({ label }: { label: string }) {
                   key={tx.id}
                   className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-white/60 dark:hover:bg-gray-800/30"
                 >
-                  <td className="py-1.5 text-gray-600 dark:text-gray-300">{formatDate(tx.date)}</td>
-                  <td className={`py-1.5 text-right font-mono font-medium ${tx.amount < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                  <td className="py-1.5 text-gray-600 dark:text-gray-300 whitespace-nowrap">{formatDate(tx.date)}</td>
+                  <td className="py-1.5 pl-4 text-gray-500 dark:text-gray-400 truncate max-w-xs" title={tx.description}>{tx.description}</td>
+                  <td className={`py-1.5 text-right font-mono font-medium whitespace-nowrap ${tx.amount < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                     {formatEur(tx.amount)}
                   </td>
                 </tr>

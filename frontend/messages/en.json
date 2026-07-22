@@ -346,6 +346,7 @@
     "colLabel": "Name",
     "colPatterns": "Patterns (regex, case-insensitive)",
     "ruleTxDate": "Date",
+    "ruleTxDesc": "Original description",
     "ruleTxAmount": "Amount",
     "ruleTxNoMatches": "No matching transactions.",
     "ruleTxPrev": "Previous",
