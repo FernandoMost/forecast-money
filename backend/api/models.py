@@ -31,6 +31,29 @@ class MonthlySummary(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Imports history
+# ---------------------------------------------------------------------------
+
+class ImportItem(BaseModel):
+    id: str
+    bank_id: str
+    filename: str
+    imported_at: str
+    tx_count: int
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ImportListResponse(BaseModel):
+    imports: list[ImportItem]
+
+
+class DeleteImportResponse(BaseModel):
+    status: str
+    import_id: str
+    deleted_transactions: int
+
+
+# ---------------------------------------------------------------------------
 # Upload
 # ---------------------------------------------------------------------------
 
@@ -82,10 +105,14 @@ class PatchTransactionRequest(BaseModel):
     clean_description: str | None = None
     category: str | None = None
     subcategory: str | None = None
+    month: str | None = None  # YYYY-MM — moves income tx to 1st of that month
 
 
 class PatchTransactionResponse(BaseModel):
     id: str
+    date: str
+    month: str
+    year: int
     clean_description: str | None
     clean_description_source: str | None
     category: str | None
@@ -245,6 +272,9 @@ class MonthSummaryForDashboard(BaseModel):
 class DashboardResponse(BaseModel):
     last_transaction_date: str | None
     days_since_last_update: int         # calendar days between last_transaction_date and today
+    # Global balance — from the most recent transaction across all data (not month-specific)
+    current_balance: float | None
+    current_balance_date: str | None
     # The month shown prominently — current month if ≥15 days of data, else last full month
     primary_month: MonthSummaryForDashboard
     # The other month shown in a compact secondary strip

@@ -157,6 +157,14 @@ class SqliteStore:
                     rule_scores TEXT NOT NULL  -- JSON: {rule_id: score}
                 );
 
+                CREATE TABLE IF NOT EXISTS description_strip_config (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type       TEXT NOT NULL CHECK(type IN ('prefix', 'suffix')),
+                    value      TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(type, value)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_tx_month    ON transactions(month);
                 CREATE INDEX IF NOT EXISTS idx_tx_date     ON transactions(date);
                 CREATE INDEX IF NOT EXISTS idx_tx_category ON transactions(category);
@@ -164,7 +172,21 @@ class SqliteStore:
                 CREATE INDEX IF NOT EXISTS idx_cat_parent  ON categories(parent_id);
                 CREATE INDEX IF NOT EXISTS idx_hsh_date    ON health_score_history(recorded_at);
             """)
+        self._migrate_schema()
         self._seed_categories()
+
+    def _migrate_schema(self) -> None:
+        """Apply incremental schema changes to existing databases."""
+        with self._connect() as conn:
+            # Add stripped_description column if it doesn't exist yet
+            existing = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(transactions)").fetchall()
+            }
+            if "stripped_description" not in existing:
+                conn.execute(
+                    "ALTER TABLE transactions ADD COLUMN stripped_description TEXT"
+                )
 
     # ------------------------------------------------------------------
     # Health score history
@@ -364,9 +386,28 @@ class SqliteStore:
     def list_imports(self) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, bank_id, filename, imported_at, tx_count FROM imports ORDER BY imported_at DESC"
+                "SELECT id, bank_id, filename, imported_at, tx_count, metadata FROM imports ORDER BY imported_at DESC"
             ).fetchall()
-        return [dict(zip(["id", "bank_id", "filename", "imported_at", "tx_count"], r)) for r in rows]
+        result = []
+        for r in rows:
+            item = dict(zip(["id", "bank_id", "filename", "imported_at", "tx_count", "metadata"], r))
+            try:
+                item["metadata"] = json.loads(item["metadata"]) if item["metadata"] else {}
+            except (json.JSONDecodeError, TypeError):
+                item["metadata"] = {}
+            result.append(item)
+        return result
+
+    def delete_import(self, import_id: str) -> dict:
+        """Deletes a single import and all its associated transactions and health score history."""
+        with self._connect() as conn:
+            tx_count = conn.execute(
+                "SELECT COUNT(*) FROM transactions WHERE import_id = ?", (import_id,)
+            ).fetchone()[0]
+            conn.execute("DELETE FROM health_score_history WHERE import_id = ?", (import_id,))
+            conn.execute("DELETE FROM transactions WHERE import_id = ?", (import_id,))
+            conn.execute("DELETE FROM imports WHERE id = ?", (import_id,))
+        return {"deleted_transactions": tx_count}
 
     # ------------------------------------------------------------------
     # Transactions — write
@@ -380,14 +421,16 @@ class SqliteStore:
                 result = conn.execute(
                     """INSERT OR IGNORE INTO transactions
                        (id, import_id, bank_id, date, date_value, description,
+                        stripped_description,
                         clean_description, clean_description_source,
                         amount, balance, currency, is_reversal, category, subcategory,
                         category_source, month, year, raw_json)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         tx["id"], import_id, tx["bank_id"],
                         tx["date"], tx["date_value"],
                         tx["description"],
+                        tx.get("stripped_description"),
                         tx.get("clean_description"), tx.get("clean_description_source"),
                         tx["amount"], tx["balance"],
                         tx.get("currency", "EUR"),
@@ -410,9 +453,9 @@ class SqliteStore:
 
     def bulk_update_categories(self, updates: list[dict]) -> int:
         """
-        Apply category + clean_description updates to multiple transactions at once.
+        Apply category + clean_description + stripped_description updates to multiple transactions at once.
         Each dict must have: id, category, subcategory, category_source,
-                             clean_description, clean_description_source.
+                             clean_description, clean_description_source, stripped_description.
         Manual edits (source='manual') are never overwritten.
         Returns the number of rows updated.
         """
@@ -425,11 +468,13 @@ class SqliteStore:
                            subcategory          = CASE WHEN category_source = 'manual' THEN subcategory ELSE ? END,
                            category_source      = CASE WHEN category_source = 'manual' THEN 'manual' ELSE ? END,
                            clean_description        = CASE WHEN clean_description_source = 'manual' THEN clean_description ELSE ? END,
-                           clean_description_source = CASE WHEN clean_description_source = 'manual' THEN 'manual' ELSE ? END
+                           clean_description_source = CASE WHEN clean_description_source = 'manual' THEN 'manual' ELSE ? END,
+                           stripped_description     = CASE WHEN clean_description_source = 'manual' THEN stripped_description ELSE ? END
                        WHERE id=?""",
                     (
                         u["category"], u["subcategory"], u["category_source"],
                         u.get("clean_description"), u.get("clean_description_source"),
+                        u.get("stripped_description"),
                         u["id"],
                     ),
                 )
@@ -442,57 +487,87 @@ class SqliteStore:
         clean_description: str | None,
         category: str | None,
         subcategory: str | None,
+        month: str | None = None,
     ) -> bool:
         """
-        Manually override clean_description and/or category for a single transaction.
-        Sets the corresponding _source fields to 'manual'.
+        Manually override clean_description, category and/or month for a single transaction.
+        When month is provided (YYYY-MM), date is set to the 1st of that month and year is
+        derived accordingly. Sets the corresponding _source fields to 'manual'.
         Returns True if a row was updated.
         """
         with self._connect() as conn:
-            result = conn.execute(
-                """UPDATE transactions
-                   SET clean_description        = COALESCE(?, clean_description),
-                       clean_description_source = CASE WHEN ? IS NOT NULL THEN 'manual' ELSE clean_description_source END,
-                       category                 = COALESCE(?, category),
-                       subcategory              = COALESCE(?, subcategory),
-                       category_source          = CASE WHEN ? IS NOT NULL THEN 'manual' ELSE category_source END
-                   WHERE id = ?""",
-                (
-                    clean_description,
-                    clean_description,   # for the CASE
-                    category,
-                    subcategory,
-                    category,            # for the CASE
-                    tx_id,
-                ),
-            )
+            if month is not None:
+                year = int(month[:4])
+                new_date = f"{month}-01"
+                result = conn.execute(
+                    """UPDATE transactions
+                       SET clean_description        = COALESCE(?, clean_description),
+                           clean_description_source = CASE WHEN ? IS NOT NULL THEN 'manual' ELSE clean_description_source END,
+                           category                 = COALESCE(?, category),
+                           subcategory              = COALESCE(?, subcategory),
+                           category_source          = CASE WHEN ? IS NOT NULL THEN 'manual' ELSE category_source END,
+                           month                    = ?,
+                           year                     = ?,
+                           date                     = ?
+                       WHERE id = ?""",
+                    (
+                        clean_description,
+                        clean_description,
+                        category,
+                        subcategory,
+                        category,
+                        month,
+                        year,
+                        new_date,
+                        tx_id,
+                    ),
+                )
+            else:
+                result = conn.execute(
+                    """UPDATE transactions
+                       SET clean_description        = COALESCE(?, clean_description),
+                           clean_description_source = CASE WHEN ? IS NOT NULL THEN 'manual' ELSE clean_description_source END,
+                           category                 = COALESCE(?, category),
+                           subcategory              = COALESCE(?, subcategory),
+                           category_source          = CASE WHEN ? IS NOT NULL THEN 'manual' ELSE category_source END
+                       WHERE id = ?""",
+                    (
+                        clean_description,
+                        clean_description,
+                        category,
+                        subcategory,
+                        category,
+                        tx_id,
+                    ),
+                )
         return result.rowcount > 0
 
     def get_transaction_by_id(self, tx_id: str) -> dict | None:
         """Returns a single transaction by id, or None if not found."""
         with self._connect() as conn:
             row = conn.execute(
-                """SELECT id, bank_id, date, date_value, description, clean_description,
-                          clean_description_source, amount, balance, currency, is_reversal,
+                """SELECT id, bank_id, date, date_value, description, stripped_description,
+                          clean_description, clean_description_source,
+                          amount, balance, currency, is_reversal,
                           category, subcategory, category_source, month, year
                    FROM transactions WHERE id = ?""",
                 (tx_id,),
             ).fetchone()
         if not row:
             return None
-        cols = ["id", "bank_id", "date", "date_value", "description",
+        cols = ["id", "bank_id", "date", "date_value", "description", "stripped_description",
                 "clean_description", "clean_description_source",
                 "amount", "balance", "currency", "is_reversal",
                 "category", "subcategory", "category_source", "month", "year"]
         return dict(zip(cols, row))
 
     def get_all_descriptions(self) -> list[dict]:
-        """Returns id + description for every transaction — used by recategorize."""
+        """Returns id + description + stripped_description for every transaction — used by recategorize."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, description FROM transactions ORDER BY date DESC"
+                "SELECT id, description, stripped_description FROM transactions ORDER BY date DESC"
             ).fetchall()
-        return [{"id": r[0], "description": r[1]} for r in rows]
+        return [{"id": r[0], "description": r[1], "stripped_description": r[2]} for r in rows]
 
     # ------------------------------------------------------------------
     # Transactions — read
@@ -556,8 +631,8 @@ class SqliteStore:
             # Paginated rows
             rows = conn.execute(
                 f"""
-                SELECT id, bank_id, date, date_value, description, clean_description,
-                       clean_description_source, amount, balance,
+                SELECT id, bank_id, date, date_value, description, stripped_description,
+                       clean_description, clean_description_source, amount, balance,
                        currency, is_reversal, category, subcategory,
                        category_source, month, year
                 FROM transactions
@@ -568,7 +643,7 @@ class SqliteStore:
                 params + [limit, offset],
             ).fetchall()
 
-        cols = ["id", "bank_id", "date", "date_value", "description",
+        cols = ["id", "bank_id", "date", "date_value", "description", "stripped_description",
                 "clean_description", "clean_description_source",
                 "amount", "balance", "currency", "is_reversal",
                 "category", "subcategory", "category_source", "month", "year"]
@@ -634,6 +709,16 @@ class SqliteStore:
                 "SELECT MAX(date) FROM transactions WHERE is_reversal = 0"
             ).fetchone()
         return row[0] if row and row[0] else None
+
+    def get_latest_balance(self) -> dict:
+        """Returns the balance and date of the most recent non-reversal transaction across all data."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT balance, date FROM transactions WHERE is_reversal = 0 ORDER BY date DESC, rowid DESC LIMIT 1"
+            ).fetchone()
+        if row:
+            return {"balance": round(row[0], 2), "date": row[1]}
+        return {"balance": None, "date": None}
 
     def get_dashboard_month_summary(self, month: str) -> dict:
         """
@@ -727,6 +812,48 @@ class SqliteStore:
             conn.execute("DELETE FROM transactions")
             conn.execute("DELETE FROM imports")
         return {"deleted_transactions": tx_count, "deleted_imports": import_count}
+
+    # ------------------------------------------------------------------
+    # Description strip config (per-user prefixes/suffixes)
+    # ------------------------------------------------------------------
+
+    def get_strip_config(self) -> list[dict]:
+        """Returns all strip config entries ordered by type then created_at."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, type, value, created_at FROM description_strip_config ORDER BY type, created_at"
+            ).fetchall()
+        return [{"id": r[0], "type": r[1], "value": r[2], "created_at": r[3]} for r in rows]
+
+    def add_strip_entry(self, entry_type: str, value: str) -> dict:
+        """Insert a prefix or suffix. Raises ValueError on duplicate."""
+        if entry_type not in ("prefix", "suffix"):
+            raise ValueError(f"Invalid type '{entry_type}'. Must be 'prefix' or 'suffix'.")
+        value = value.strip()
+        if not value:
+            raise ValueError("Value cannot be empty.")
+        with self._connect() as conn:
+            try:
+                cursor = conn.execute(
+                    "INSERT INTO description_strip_config (type, value) VALUES (?, ?)",
+                    (entry_type, value),
+                )
+                row_id = cursor.lastrowid
+            except Exception:
+                raise ValueError(f"Entry ({entry_type}, '{value}') already exists.")
+            row = conn.execute(
+                "SELECT id, type, value, created_at FROM description_strip_config WHERE id = ?",
+                (row_id,),
+            ).fetchone()
+        return {"id": row[0], "type": row[1], "value": row[2], "created_at": row[3]}
+
+    def delete_strip_entry(self, entry_id: int) -> bool:
+        """Delete a strip config entry by id. Returns True if deleted."""
+        with self._connect() as conn:
+            result = conn.execute(
+                "DELETE FROM description_strip_config WHERE id = ?", (entry_id,)
+            )
+        return result.rowcount > 0
 
     # ------------------------------------------------------------------
     # Internal

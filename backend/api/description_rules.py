@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from api.deps import get_store, get_shared_store, get_current_user
-from categorizer.description_cleaner import reload_rules as reload_clean_rules
+from categorizer.description_cleaner import reload_rules as reload_clean_rules, apply_strip_config
 from categorizer.rule_categorizer import reload_rules as reload_category_rules
 from categorizer.rule_categorizer import categorize_transaction
 from db.sqlite_store import SqliteStore
@@ -92,6 +92,36 @@ class ApplyRulesRequest(BaseModel):
 class ApplyRulesResponse(BaseModel):
     saved: int
     updated: int
+
+
+# ---------------------------------------------------------------------------
+# Strip config models
+# ---------------------------------------------------------------------------
+
+class StripConfigEntry(BaseModel):
+    id: int
+    type: str
+    value: str
+    created_at: str
+
+
+class StripConfigResponse(BaseModel):
+    entries: list[StripConfigEntry]
+
+
+class StripConfigCreateRequest(BaseModel):
+    type: str   # "prefix" | "suffix"
+    value: str
+
+
+class StripSuggestion(BaseModel):
+    type: str   # "prefix" | "suffix"
+    value: str
+    count: int
+
+
+class StripSuggestionsResponse(BaseModel):
+    suggestions: list[StripSuggestion]
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +192,7 @@ def create_rule(
 # PUT /description-rules/{label}
 # ---------------------------------------------------------------------------
 
-@router.put("/description-rules/{label}", response_model=DescriptionRule)
+@router.put("/description-rules/{label:path}", response_model=DescriptionRule)
 def update_rule(
     label: str,
     body: RuleUpdateRequest,
@@ -191,7 +221,7 @@ def update_rule(
 # DELETE /description-rules/{label}
 # ---------------------------------------------------------------------------
 
-@router.delete("/description-rules/{label}", response_model=RuleDeleteResponse)
+@router.delete("/description-rules/{label:path}", response_model=RuleDeleteResponse)
 def delete_rule(
     label: str,
     shared: SharedStore = Depends(get_shared_store),
@@ -265,10 +295,10 @@ def get_suggestions(
 ):
     with store._connect() as conn:
         rows = conn.execute(
-            """SELECT description, COUNT(*) as c
+            """SELECT COALESCE(stripped_description, description) as desc, COUNT(*) as c
                FROM transactions
                WHERE clean_description IS NULL
-               GROUP BY description
+               GROUP BY COALESCE(stripped_description, description)
                ORDER BY c DESC"""
         ).fetchall()
 
@@ -300,13 +330,23 @@ def get_suggestions(
     groups: list[SuggestionGroup] = []
     for canonical, members in merged.items():
         total_count = sum(raw_freq[m] for m in members)
-        common = _common_tokens(members)
-        if not common:
-            norm = _normalize(members[0]).split()
-            common = [norm[0]] if norm else [members[0][:8]]
+        if len(members) == 1:
+            # Single description: use it verbatim as the pattern (already stripped of
+            # bank noise by the user's prefix/suffix config).  Escape regex metacharacters
+            # so the pattern matches literally.
+            raw = members[0]
+            # Escape regex metacharacters but leave spaces unescaped
+            common = [re.sub(r'(?=[\\^$*+?{}\[\]|().])', r'\\', raw)]
+            label_text = _title_case(_normalize(raw)) or raw.title()
+        else:
+            common = _common_tokens(members)
+            if not common:
+                norm = _normalize(members[0]).split()
+                common = [norm[0]] if norm else [members[0][:8]]
+            label_text = _title_case(canonical)
         groups.append(SuggestionGroup(
             canonical=canonical,
-            suggested_label=_title_case(canonical),
+            suggested_label=label_text,
             suggested_patterns=common,
             members=[{"raw": m, "count": raw_freq[m]} for m in sorted(members, key=lambda m: -raw_freq[m])],
             total_count=total_count,
@@ -332,15 +372,152 @@ def apply_rules(
         if not rule.patterns:
             continue
         if shared.rule_exists(rule.label):
-            shared.update_rule(rule.label, patterns=rule.patterns)
+            # Merge patterns: keep existing ones and append new ones not already present
+            existing = shared.update_rule(rule.label)  # fetch without changes
+            existing_patterns: list[str] = existing["patterns"] if existing else []
+            merged = list(existing_patterns)
+            for p in rule.patterns:
+                if p not in merged:
+                    merged.append(p)
+            shared.update_rule(rule.label, patterns=merged)
         else:
             shared.create_rule(rule.label, rule.patterns, rule.position)
         saved += 1
 
     _reload_all()
 
+    strip_config = store.get_strip_config()
     all_txs = store.get_all_descriptions()
-    categorized = [categorize_transaction(tx) for tx in all_txs]
+    categorized = [categorize_transaction(tx, strip_config=strip_config) for tx in all_txs]
     updated = store.bulk_update_categories(categorized)
 
     return ApplyRulesResponse(saved=saved, updated=updated)
+
+
+# ---------------------------------------------------------------------------
+# GET /description-strip-config
+# ---------------------------------------------------------------------------
+
+@router.get("/description-strip-config", response_model=StripConfigResponse)
+def get_strip_config(
+    store: SqliteStore = Depends(get_store),
+    _user=Depends(get_current_user),
+):
+    entries = store.get_strip_config()
+    return StripConfigResponse(
+        entries=[StripConfigEntry(**e) for e in entries]
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /description-strip-config
+# ---------------------------------------------------------------------------
+
+@router.post("/description-strip-config", response_model=StripConfigEntry, status_code=201)
+def add_strip_entry(
+    body: StripConfigCreateRequest,
+    store: SqliteStore = Depends(get_store),
+    _user=Depends(get_current_user),
+):
+    if body.type not in ("prefix", "suffix"):
+        raise HTTPException(status_code=422, detail="type must be 'prefix' or 'suffix'.")
+    if not body.value.strip():
+        raise HTTPException(status_code=422, detail="value cannot be empty.")
+    try:
+        entry = store.add_strip_entry(body.type, body.value)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return StripConfigEntry(**entry)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /description-strip-config/{id}
+# ---------------------------------------------------------------------------
+
+@router.delete("/description-strip-config/{entry_id}")
+def delete_strip_entry(
+    entry_id: int,
+    store: SqliteStore = Depends(get_store),
+    _user=Depends(get_current_user),
+):
+    deleted = store.delete_strip_entry(entry_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Strip config entry {entry_id} not found.")
+    return {"deleted": True, "id": entry_id}
+
+
+# ---------------------------------------------------------------------------
+# GET /description-strip-suggestions
+# Suggests frequent leading/trailing tokens from raw descriptions (≥3 occurrences)
+# ---------------------------------------------------------------------------
+
+_STRIP_NOISE_TOKENS = {
+    "DE", "A", "EN", "EL", "LA", "LOS", "LAS", "DEL", "AL", "Y",
+    "ES", "COM", "NET", "S.L", "SL", "SA", "S.A",
+}
+_STRIP_NUMERIC_RE = re.compile(r"^\d+[\d\s\-\*\.]*$")
+_STRIP_ALPHANUMERIC_RE = re.compile(r"^[A-Z0-9]{6,}$")
+
+
+def _strip_tokenize(description: str) -> list[str]:
+    """Split a raw description into normalised uppercase tokens."""
+    upper = description.upper()
+    nfkd = unicodedata.normalize("NFKD", upper)
+    cleaned = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return [t for t in re.split(r"[\s\-\*\.,/\\|]+", cleaned) if t]
+
+
+def _is_noise_token(token: str) -> bool:
+    return (
+        len(token) < 3
+        or token in _STRIP_NOISE_TOKENS
+        or bool(_STRIP_NUMERIC_RE.match(token))
+        or bool(_STRIP_ALPHANUMERIC_RE.match(token))
+    )
+
+
+@router.get("/description-strip-suggestions", response_model=StripSuggestionsResponse)
+def get_strip_suggestions(
+    store: SqliteStore = Depends(get_store),
+    _user=Depends(get_current_user),
+):
+    with store._connect() as conn:
+        rows = conn.execute(
+            "SELECT description FROM transactions"
+        ).fetchall()
+
+    descriptions = [r[0] for r in rows if r[0]]
+
+    prefix_counts: dict[str, int] = defaultdict(int)
+    suffix_counts: dict[str, int] = defaultdict(int)
+
+    for desc in descriptions:
+        tokens = _strip_tokenize(desc)
+        if not tokens:
+            continue
+        first = tokens[0]
+        last = tokens[-1]
+        if not _is_noise_token(first):
+            prefix_counts[first] += 1
+        if not _is_noise_token(last) and last != first:
+            suffix_counts[last] += 1
+
+    min_count = 3
+    suggestions: list[StripSuggestion] = []
+
+    for value, count in sorted(prefix_counts.items(), key=lambda x: -x[1]):
+        if count >= min_count:
+            suggestions.append(StripSuggestion(type="prefix", value=value, count=count))
+
+    for value, count in sorted(suffix_counts.items(), key=lambda x: -x[1]):
+        if count >= min_count:
+            suggestions.append(StripSuggestion(type="suffix", value=value, count=count))
+
+    # Exclude tokens already configured
+    existing = {(e["type"], e["value"].upper()) for e in store.get_strip_config()}
+    suggestions = [
+        s for s in suggestions
+        if (s.type, s.value.upper()) not in existing
+    ]
+
+    return StripSuggestionsResponse(suggestions=suggestions)

@@ -3,6 +3,8 @@ api/routes.py — FastAPI route handlers.
 
 Endpoints:
   POST   /upload                — Upload a bank statement xlsx/csv
+  GET    /imports               — List all import records
+  DELETE /imports/{import_id}   — Delete a single import and its transactions
   GET    /dashboard             — Dashboard: health score + current/last month enriched summaries
   GET    /summary/{month}       — Monthly financial summary
   GET    /transactions          — Paginated + filtered transaction list
@@ -38,9 +40,11 @@ from api.models import (
     CategoryUpdateRequest,
     CategoryWithChildren,
     DashboardResponse,
+    DeleteImportResponse,
     HealthCheckResponse,
     HealthScoreHistoryResponse,
     HealthScoreResponse,
+    ImportListResponse,
     MonthSummaryForDashboard,
     MonthlySummary,
     PatchTransactionRequest,
@@ -93,13 +97,15 @@ async def upload_statement(
         result = parser.parse(tmp_path)
         meta = result.metadata
 
-        normalized = [normalize(raw, meta.bank_id) for raw in result.transactions]
+        strip_prefixes = parser.strip_description_prefixes
+        strip_config = store.get_strip_config()
+        normalized = [normalize(raw, meta.bank_id, strip_prefixes) for raw in result.transactions]
 
         if use_ai:
             ai = AiCategorizer(cache_path=settings.data_dir / "category_cache.db", store=store)
-            categorized = [ai.categorize_transaction(tx) for tx in normalized]
+            categorized = [ai.categorize_transaction(tx, strip_config=strip_config) for tx in normalized]
         else:
-            categorized = [categorize_transaction(tx) for tx in normalized]
+            categorized = [categorize_transaction(tx, strip_config=strip_config) for tx in normalized]
 
         import_id = uuid.uuid4().hex
         inserted = store.upsert_transactions(categorized, import_id)
@@ -148,6 +154,34 @@ async def upload_statement(
         )
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# GET /imports  |  DELETE /imports/{import_id}
+# ---------------------------------------------------------------------------
+
+@router.get("/imports", response_model=ImportListResponse, summary="List all import records")
+def list_imports(store: SqliteStore = Depends(get_store)):
+    """Returns all import records ordered by most recent first, including metadata."""
+    return ImportListResponse(imports=store.list_imports())
+
+
+@router.delete("/imports/{import_id}", response_model=DeleteImportResponse, summary="Delete a single import and its transactions")
+def delete_import(import_id: str, store: SqliteStore = Depends(get_store)):
+    """
+    Deletes the import record and all transactions associated with it.
+    Also removes any health score history snapshot linked to this import.
+    This action is irreversible.
+    """
+    imports = store.list_imports()
+    if not any(i["id"] == import_id for i in imports):
+        raise HTTPException(status_code=404, detail=f"Import '{import_id}' not found.")
+    result = store.delete_import(import_id)
+    return DeleteImportResponse(
+        status="deleted",
+        import_id=import_id,
+        deleted_transactions=result["deleted_transactions"],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -269,9 +303,13 @@ def get_dashboard(store: SqliteStore = Depends(get_store)):
     primary = _build_month_summary(primary_raw, today)
     secondary = _build_month_summary(secondary_raw, today) if secondary_raw else None
 
+    latest_balance = store.get_latest_balance()
+
     return DashboardResponse(
         last_transaction_date=last_tx_date_str,
         days_since_last_update=days_since,
+        current_balance=latest_balance["balance"],
+        current_balance_date=latest_balance["date"],
         primary_month=primary,
         secondary_month=secondary,
         primary_is_current=primary_is_current,
@@ -344,15 +382,22 @@ def patch_transaction(
     store: SqliteStore = Depends(get_store),
 ):
     """
-    Override clean_description and/or category/subcategory for a single transaction.
+    Override clean_description, category/subcategory and/or month for a single transaction.
+    When month (YYYY-MM) is provided, date is set to the 1st of that month.
     Sets category_source and/or clean_description_source to 'manual'.
     Only the provided fields are updated; omitted fields are left unchanged.
     """
+    if body.month is not None:
+        import re as _re
+        if not _re.match(r"^\d{4}-\d{2}$", body.month):
+            raise HTTPException(status_code=422, detail="month must be in YYYY-MM format.")
+
     updated = store.update_transaction_manual(
         tx_id=tx_id,
         clean_description=body.clean_description,
         category=body.category,
         subcategory=body.subcategory,
+        month=body.month,
     )
     if not updated:
         raise HTTPException(status_code=404, detail=f"Transaction '{tx_id}' not found.")
@@ -360,6 +405,9 @@ def patch_transaction(
     tx = store.get_transaction_by_id(tx_id)
     return PatchTransactionResponse(
         id=tx["id"],
+        date=tx["date"],
+        month=tx["month"],
+        year=tx["year"],
         clean_description=tx["clean_description"],
         clean_description_source=tx["clean_description_source"],
         category=tx["category"],
@@ -604,6 +652,7 @@ def recategorize(
     reload_category_rules()
     reload_clean_rules()
 
+    strip_config = store.get_strip_config()
     rows = store.get_all_descriptions()
     if not rows:
         return RecategorizeResponse(updated=0, category_sources={}, clean_description_sources={})
@@ -615,9 +664,9 @@ def recategorize(
             cache_path=settings.data_dir / "category_cache.db",
             store=store,
         )
-        categorized = [ai.categorize_transaction(row) for row in rows]
+        categorized = [ai.categorize_transaction(row, strip_config=strip_config) for row in rows]
     else:
-        categorized = [categorize_transaction(row) for row in rows]
+        categorized = [categorize_transaction(row, strip_config=strip_config) for row in rows]
 
     updated = store.bulk_update_categories(categorized)
 
