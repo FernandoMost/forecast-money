@@ -135,6 +135,7 @@ export interface Transaction {
   date: string;
   date_value: string;
   description: string;
+  stripped_description: string | null;
   clean_description: string | null;
   clean_description_source: string | null;
   amount: number;
@@ -202,10 +203,14 @@ export interface PatchTransactionRequest {
   clean_description?: string | null;
   category?: string | null;
   subcategory?: string | null;
+  month?: string | null;  // YYYY-MM — moves income tx date to 1st of that month
 }
 
 export interface PatchTransactionResponse {
   id: string;
+  date: string;
+  month: string;
+  year: number;
   clean_description: string | null;
   clean_description_source: string | null;
   category: string | null;
@@ -292,6 +297,8 @@ export interface MonthSummaryForDashboard {
 export interface DashboardData {
   last_transaction_date: string | null;
   days_since_last_update: number;
+  current_balance: number | null;
+  current_balance_date: string | null;
   primary_month: MonthSummaryForDashboard;
   secondary_month: MonthSummaryForDashboard | null;
   primary_is_current: boolean;
@@ -347,6 +354,58 @@ export interface SuggestionsResponse {
 export interface ApplyRulesResponse {
   saved: number;
   updated: number;
+}
+
+// --- Strip config types ---
+
+export interface StripConfigEntry {
+  id: number;
+  type: "prefix" | "suffix";
+  value: string;
+  created_at: string;
+}
+
+export interface StripConfigResponse {
+  entries: StripConfigEntry[];
+}
+
+export interface StripSuggestion {
+  type: "prefix" | "suffix";
+  value: string;
+  count: number;
+}
+
+export interface StripSuggestionsResponse {
+  suggestions: StripSuggestion[];
+}
+
+// --- Imports types ---
+
+export interface ImportMetadata {
+  account_number?: string | null;
+  account_holder?: string | null;
+  current_balance?: number | null;
+  export_date?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ImportItem {
+  id: string;
+  bank_id: string;
+  filename: string;
+  imported_at: string;
+  tx_count: number;
+  metadata: ImportMetadata;
+}
+
+export interface ImportListResponse {
+  imports: ImportItem[];
+}
+
+export interface DeleteImportResponse {
+  status: string;
+  import_id: string;
+  deleted_transactions: number;
 }
 
 // --- Auth types ---
@@ -415,6 +474,11 @@ export const api = {
   deleteCategory: (id: string) =>
     del<CategoryDeleteResponse>(`/categories/${id}`),
 
+  // Imports history
+  listImports: () => get<ImportListResponse>("/imports"),
+  deleteImport: (importId: string) => del<DeleteImportResponse>(`/imports/${importId}`),
+  clearAllData: () => del<{ status: string; deleted_transactions: number; deleted_imports: number }>("/data"),
+
   // Description Rules CRUD
   descriptionRules: () => get<RuleListResponse>("/description-rules"),
   createDescriptionRule: (label: string, patterns: string[], position?: number) =>
@@ -427,4 +491,13 @@ export const api = {
     get<SuggestionsResponse>(`/description-suggestions?limit=${limit}`),
   applyDescriptionRules: (rules: { label: string; patterns: string[]; position?: number }[]) =>
     postJson<ApplyRulesResponse>("/description-rules/apply", { rules }),
+
+  // Strip config (per-user prefixes/suffixes)
+  stripConfig: () => get<StripConfigResponse>("/description-strip-config"),
+  addStripEntry: (type: "prefix" | "suffix", value: string) =>
+    postJson<StripConfigEntry>("/description-strip-config", { type, value }),
+  deleteStripEntry: (id: number) =>
+    del<{ deleted: boolean; id: number }>(`/description-strip-config/${id}`),
+  stripSuggestions: () =>
+    get<StripSuggestionsResponse>("/description-strip-suggestions"),
 };

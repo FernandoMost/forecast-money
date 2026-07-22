@@ -152,7 +152,11 @@
     "sourceManual": "Manual",
     "txCount": "{count} transactions",
     "prev": "← Prev",
-    "next": "Next →"
+    "next": "Next →",
+    "moveMonthTooltip": "Move to accounting month",
+    "moveMonthLabel": "Accounting month",
+    "moveMonthSave": "Move",
+    "moveMonthCancel": "Cancel"
   },
   "categories": {
     "title": "Categories",
@@ -211,6 +215,8 @@
   "upload": {
     "title": "Upload Statement",
     "subtitle": "Upload your bank statement export (.xlsx or .csv). All data stays on your server.",
+    "tabImport": "Import",
+    "tabHistory": "History",
     "sharedBanner": "File received from share: {filename}",
     "fileLabel": "Statement file (.xlsx or .csv)",
     "fileLabelShared": "File (from share)",
@@ -233,7 +239,24 @@
     "recatSubmitting": "Recategorizing…",
     "recatSuccess": "{count} transactions updated",
     "recatCatSources": "Category sources:",
-    "recatDescSources": "Description sources:"
+    "recatDescSources": "Description sources:",
+    "historyTitle": "Imports",
+    "historyEmpty": "No imports yet.",
+    "historyLoading": "Loading history…",
+    "colBank": "Bank",
+    "colFile": "File",
+    "colDate": "Date",
+    "colTxCount": "Transactions",
+    "colAccount": "Account",
+    "colBalance": "Balance",
+    "deleteImport": "Delete",
+    "confirmDeleteImport": "Delete this import and its {count} transactions? This action is irreversible.",
+    "deleteImportSuccess": "{count} transactions deleted.",
+    "deleteAllTitle": "Delete all data",
+    "deleteAllBody": "This will permanently delete all imports and transactions. This cannot be undone.",
+    "deleteAllConfirm": "Delete everything",
+    "deleteAllSuccess": "Data cleared: {tx} transactions, {imp} imports.",
+    "deleting": "Deleting…"
   },
   "login": {
     "subtitle": "Privacy-first personal finance",
@@ -349,6 +372,28 @@
     "showLess": "Show less",
     "createAndApply": "Create rule and apply",
     "applying": "Applying…",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "tabStrip": "Prefixes & suffixes",
+    "stripTitle": "Personal prefixes & suffixes",
+    "stripSubtitle": "Removed from the raw description before applying the cleaning rules.",
+    "stripPrefixes": "Prefixes",
+    "stripSuffixes": "Suffixes",
+    "stripNoPrefixes": "No prefixes configured.",
+    "stripNoSuffixes": "No suffixes configured.",
+    "addPrefix": "Add prefix…",
+    "addSuffix": "Add suffix…",
+    "stripAdd": "Add",
+    "stripDelete": "Remove",
+    "stripApply": "Apply to all transactions",
+    "stripApplying": "Applying…",
+    "stripAppliedSuccess": "{n} transactions updated.",
+    "stripSuggestionsTitle": "Automatic suggestions",
+    "stripSuggestionsDesc": "Tokens detected frequently at the start or end of raw descriptions (min. 3 times).",
+    "stripNoSuggestions": "No frequent prefixes or suffixes detected.",
+    "stripFrequentPrefixes": "Frequent prefixes",
+    "stripFrequentSuffixes": "Frequent suffixes",
+    "stripAddAsPrefix": "Add as prefix",
+    "stripAddAsSuffix": "Add as suffix",
+    "stripCount": "time(s)"
   }
 }

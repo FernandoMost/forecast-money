@@ -73,9 +73,6 @@ function PrimaryMonthCards({ m, isCurrentMonth }: { m: MonthSummaryForDashboard;
       : "neutral";
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-      {m.last_balance != null && (
-        <MetricCard label={t("dashboard.labelBalance")} value={formatEur(m.last_balance)} sub={t("dashboard.labelBalanceAs", { date: m.last_balance_date ?? "" })} highlight />
-      )}
       <MetricCard label={isCurrentMonth ? t("dashboard.labelIncomeCurrent") : t("dashboard.labelIncome")} value={formatEur(m.total_income)} tone="positive" />
       <MetricCard label={isCurrentMonth ? t("dashboard.labelExpensesCurrent") : t("dashboard.labelExpenses")} value={formatEur(m.total_expenses)} tone="negative" />
       <MetricCard label={isCurrentMonth ? t("dashboard.labelNetCurrent") : t("dashboard.labelNet")} value={formatEur(m.net_savings)} sub={m.drew_from_savings ? t("dashboard.drewFromSavings") : undefined} tone={savingsTone} />
@@ -206,7 +203,7 @@ export default function DashboardPage() {
     );
   }
 
-  const { health, primary_month, secondary_month, primary_is_current, days_since_last_update, last_transaction_date } = data;
+  const { health, primary_month, secondary_month, primary_is_current, days_since_last_update, last_transaction_date, current_balance, current_balance_date } = data;
   const monthCount = health.months_analyzed.length;
   const txCount = health.summary.transaction_count;
   const rangeStart = health.months_analyzed[0];
@@ -227,12 +224,26 @@ export default function DashboardPage() {
         </p>
       </div>
       <StalenessAlert days={days_since_last_update} lastDate={last_transaction_date} />
+
+      {/* Global snapshot — score + balance: data about the account as a whole, not month-specific */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="md:col-span-1"><ScoreDial score={health.overall_score} grade={health.grade} /></div>
-        <div className="md:col-span-3 space-y-2">
-          <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium pl-1">{primaryLabel}</div>
-          <PrimaryMonthCards m={primary_month} isCurrentMonth={primary_is_current} />
-        </div>
+        {current_balance != null && (
+          <div className="md:col-span-1">
+            <MetricCard
+              label={t("dashboard.labelBalance")}
+              value={formatEur(current_balance)}
+              sub={current_balance_date ? t("dashboard.labelBalanceAs", { date: formatDate(current_balance_date, intlLocale) }) : undefined}
+              highlight
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Primary month analysis */}
+      <div className="space-y-2">
+        <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium pl-1">{primaryLabel}</div>
+        <PrimaryMonthCards m={primary_month} isCurrentMonth={primary_is_current} />
       </div>
       {secondary_month && <SecondaryMonthStrip m={secondary_month} label={secondaryLabel} />}
       <AlertBanner alerts={health.alerts} />

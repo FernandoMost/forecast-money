@@ -117,6 +117,9 @@ function InlineDescEdit({
         clean_description: value.trim() || null,
       });
       onSaved({
+        date: result.date,
+        month: result.month,
+        year: result.year,
         clean_description: result.clean_description,
         clean_description_source: result.clean_description_source ?? undefined,
       });
@@ -239,6 +242,9 @@ function InlineCatEdit({
         subcategory: sub || null,
       });
       onSaved({
+        date: result.date,
+        month: result.month,
+        year: result.year,
         category: result.category ?? undefined,
         subcategory: result.subcategory ?? undefined,
         category_source: result.category_source ?? undefined,
@@ -325,6 +331,128 @@ function InlineCatEdit({
         onClick={(e) => { e.stopPropagation(); cancel(); }}
         title={t("transactions.cancelTitle")}
         className="p-0.5 rounded text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0"
+      >
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+          <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inline month editor — only for income rows (amount > 0, not reversal)
+// Shows a calendar icon next to the date; click opens a month selector
+// offering available months + the next month after the current one
+// ---------------------------------------------------------------------------
+
+function InlineMonthEdit({
+  tx,
+  availableMonths,
+  onSaved,
+}: {
+  tx: Transaction;
+  availableMonths: string[];
+  onSaved: (updated: Partial<Transaction>) => void;
+}) {
+  const { t } = useT();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue]     = useState(tx.month);
+  const [saving, setSaving]   = useState(false);
+
+  // Build the options: existing months + next month after the latest
+  const options = useMemo(() => {
+    const set = new Set(availableMonths);
+    if (availableMonths.length > 0) {
+      const latest = availableMonths[0]; // DESC order
+      const [y, m] = latest.split("-").map(Number);
+      const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+      set.add(nextMonth);
+    }
+    return [...set].sort((a, b) => b.localeCompare(a)); // DESC
+  }, [availableMonths]);
+
+  function open(e: React.MouseEvent) {
+    e.stopPropagation();
+    setValue(tx.month);
+    setEditing(true);
+  }
+
+  function cancel(e?: React.MouseEvent) {
+    e?.stopPropagation();
+    setEditing(false);
+  }
+
+  async function submit(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (saving || value === tx.month) { cancel(); return; }
+    setSaving(true);
+    try {
+      const result = await api.patchTransaction(tx.id, { month: value });
+      onSaved({
+        date: result.date,
+        month: result.month,
+        year: result.year,
+      });
+      setEditing(false);
+    } catch {
+      /* keep open */
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={open}
+        title={t("transactions.moveMonthTooltip")}
+        className="ml-1 p-0.5 rounded text-green-400 hover:text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors shrink-0"
+      >
+        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+          <line x1="16" y1="2" x2="16" y2="6" strokeLinecap="round" />
+          <line x1="8" y1="2" x2="8" y2="6" strokeLinecap="round" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 ml-1" onClick={(e) => e.stopPropagation()}>
+      <select
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Escape") cancel(); }}
+        className="border border-green-400 dark:border-green-600 rounded px-1 py-0.5 text-xs bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-green-400 min-w-[90px]"
+      >
+        {options.map((m) => (
+          <option key={m} value={m}>{m}</option>
+        ))}
+      </select>
+      <button
+        onClick={submit}
+        disabled={saving}
+        title={t("transactions.moveMonthSave")}
+        className="p-0.5 rounded text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 disabled:opacity-40 shrink-0"
+      >
+        {saving ? (
+          <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+            <circle cx="12" cy="12" r="10" strokeOpacity={0.2} />
+            <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+          </svg>
+        ) : (
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+            <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+      <button
+        onClick={cancel}
+        title={t("transactions.moveMonthCancel")}
+        className="p-0.5 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0"
       >
         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
           <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
@@ -616,9 +744,28 @@ export default function TransactionsPage() {
       size: 96,
       minSize: 72,
       enableSorting: true,
-      cell: ({ row }) => (
-        <span className="text-gray-400 dark:text-gray-500 whitespace-nowrap text-xs tabular-nums">{formatDate(row.original.date, intlLocale)}</span>
-      ),
+      cell: ({ row, table: tbl }) => {
+        const tx = row.original;
+        const isIncome = tx.amount > 0 && !tx.is_reversal;
+        const meta = tbl.options.meta as {
+          onSave?: (id: string, u: Partial<Transaction>) => void;
+          availableMonths?: string[];
+        };
+        return (
+          <div className="flex items-center">
+            <span className="text-gray-400 dark:text-gray-500 whitespace-nowrap text-xs tabular-nums">
+              {formatDate(tx.date, intlLocale)}
+            </span>
+            {isIncome && (
+              <InlineMonthEdit
+                tx={tx}
+                availableMonths={meta.availableMonths ?? []}
+                onSaved={(updated) => meta.onSave?.(tx.id, updated)}
+              />
+            )}
+          </div>
+        );
+      },
     },
     {
       id: "description",
@@ -718,7 +865,7 @@ export default function TransactionsPage() {
     getSortedRowModel: getSortedRowModel(),
     manualSorting: true,
     defaultColumn: { minSize: 60 },
-    meta: { onSave: handleSave },
+    meta: { onSave: handleSave, availableMonths: months },
   });
 
   const colCount = table.getVisibleLeafColumns().length;

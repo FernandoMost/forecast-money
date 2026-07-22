@@ -152,7 +152,11 @@
     "sourceManual": "Manual",
     "txCount": "{count} movimientos",
     "prev": "← Ant.",
-    "next": "Sig. →"
+    "next": "Sig. →",
+    "moveMonthTooltip": "Mover al mes que corresponde",
+    "moveMonthLabel": "Mes contable",
+    "moveMonthSave": "Mover",
+    "moveMonthCancel": "Cancelar"
   },
   "categories": {
     "title": "Categorías",
@@ -211,6 +215,8 @@
   "upload": {
     "title": "Importar extracto",
     "subtitle": "Sube tu exportación bancaria (.xlsx o .csv). Los datos se quedan en tu servidor.",
+    "tabImport": "Importar",
+    "tabHistory": "Historial",
     "sharedBanner": "Archivo recibido por compartir: {filename}",
     "fileLabel": "Archivo de extracto (.xlsx o .csv)",
     "fileLabelShared": "Archivo (recibido)",
@@ -233,7 +239,24 @@
     "recatSubmitting": "Recategorizando…",
     "recatSuccess": "{count} movimientos actualizados",
     "recatCatSources": "Fuentes de categoría:",
-    "recatDescSources": "Fuentes de descripción:"
+    "recatDescSources": "Fuentes de descripción:",
+    "historyTitle": "Importaciones",
+    "historyEmpty": "No hay importaciones todavía.",
+    "historyLoading": "Cargando historial…",
+    "colBank": "Banco",
+    "colFile": "Archivo",
+    "colDate": "Fecha",
+    "colTxCount": "Movimientos",
+    "colAccount": "Cuenta",
+    "colBalance": "Saldo",
+    "deleteImport": "Eliminar",
+    "confirmDeleteImport": "¿Eliminar esta importación y sus {count} movimientos? Esta acción es irreversible.",
+    "deleteImportSuccess": "{count} movimientos eliminados.",
+    "deleteAllTitle": "Eliminar todos los datos",
+    "deleteAllBody": "Esto eliminará permanentemente todas las importaciones y movimientos. No se puede deshacer.",
+    "deleteAllConfirm": "Eliminar todo",
+    "deleteAllSuccess": "Datos eliminados: {tx} movimientos, {imp} importaciones.",
+    "deleting": "Eliminando…"
   },
   "login": {
     "subtitle": "Finanzas personales con privacidad primero",
@@ -349,6 +372,28 @@
     "showLess": "Ver menos",
     "createAndApply": "Crear regla y aplicar",
     "applying": "Aplicando…",
-    "dismiss": "Ignorar"
+    "dismiss": "Ignorar",
+    "tabStrip": "Prefijos y sufijos",
+    "stripTitle": "Prefijos y sufijos personales",
+    "stripSubtitle": "Se eliminan de la descripción original antes de aplicar las reglas de limpieza.",
+    "stripPrefixes": "Prefijos",
+    "stripSuffixes": "Sufijos",
+    "stripNoPrefixes": "No hay prefijos configurados.",
+    "stripNoSuffixes": "No hay sufijos configurados.",
+    "addPrefix": "Añadir prefijo…",
+    "addSuffix": "Añadir sufijo…",
+    "stripAdd": "Añadir",
+    "stripDelete": "Eliminar",
+    "stripApply": "Aplicar a todos los movimientos",
+    "stripApplying": "Aplicando…",
+    "stripAppliedSuccess": "{n} movimientos actualizados.",
+    "stripSuggestionsTitle": "Sugerencias automáticas",
+    "stripSuggestionsDesc": "Tokens detectados con frecuencia al inicio o al final de descripciones originales (mín. 3 veces).",
+    "stripNoSuggestions": "No se han detectado prefijos o sufijos frecuentes.",
+    "stripFrequentPrefixes": "Prefijos frecuentes",
+    "stripFrequentSuffixes": "Sufijos frecuentes",
+    "stripAddAsPrefix": "Añadir como prefijo",
+    "stripAddAsSuffix": "Añadir como sufijo",
+    "stripCount": "vez(veces)"
   }
 }
