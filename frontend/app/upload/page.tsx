@@ -21,12 +21,13 @@ export default function UploadPage() {
   const [tab, setTab] = useState<Tab>("import");
 
   // ---- Upload state ----
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [bank, setBank] = useState("santander");
   const [useAi, setUseAi] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<UploadResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [results, setResults] = useState<UploadResponse[]>([]);
+  const [errors, setErrors] = useState<{ filename: string; message: string }[]>([]);
   const [sharedFile, setSharedFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -57,7 +58,7 @@ export default function UploadPage() {
         const blob = await req.blob();
         const name = req.headers.get("X-Filename") ?? "statement.xlsx";
         const recovered = new File([blob], name, { type: blob.type });
-        setFile(recovered);
+        setFiles([recovered]);
         setSharedFile(true);
         await cache.delete("/shared-file");
         window.history.replaceState({}, "", "/upload");
@@ -81,19 +82,49 @@ export default function UploadPage() {
   }, [tab, loadImports]);
 
   // ---- Handlers ----
+  function addFiles(incoming: FileList | null) {
+    if (!incoming) return;
+    const newFiles = Array.from(incoming);
+    setFiles((prev) => {
+      // deduplicate by name
+      const names = new Set(prev.map((f) => f.name));
+      return [...prev, ...newFiles.filter((f) => !names.has(f.name))];
+    });
+    setSharedFile(false);
+  }
+
+  function removeFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file) return;
-    setLoading(true); setError(null); setResult(null);
-    try {
-      const res = await api.upload(file, bank, useAi);
-      setResult(res);
-      setFile(null);
-      setSharedFile(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    } finally { setLoading(false); }
+    if (files.length === 0) return;
+    setLoading(true);
+    setErrors([]);
+    setResults([]);
+    setUploadProgress({ current: 0, total: files.length });
+    const newResults: UploadResponse[] = [];
+    const newErrors: { filename: string; message: string }[] = [];
+    for (let i = 0; i < files.length; i++) {
+      setUploadProgress({ current: i + 1, total: files.length });
+      try {
+        const res = await api.upload(files[i], bank, useAi);
+        newResults.push(res);
+      } catch (err: unknown) {
+        newErrors.push({
+          filename: files[i].name,
+          message: err instanceof Error ? err.message : "Upload failed",
+        });
+      }
+    }
+    setResults(newResults);
+    setErrors(newErrors);
+    setFiles([]);
+    setSharedFile(false);
+    setUploadProgress(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setLoading(false);
   }
 
   async function handleRecategorize() {
@@ -163,12 +194,12 @@ export default function UploadPage() {
       {tab === "import" && (
         <div className="space-y-6 max-w-xl">
           <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm space-y-5">
-            {sharedFile && file && (
+            {sharedFile && files.length > 0 && (
               <div className="flex items-center gap-3 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 rounded-lg px-4 py-3 text-sm text-indigo-800 dark:text-indigo-300">
                 <svg className="w-5 h-5 shrink-0 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span>{t("upload.sharedBanner", { filename: file.name })}</span>
+                <span>{t("upload.sharedBanner", { filename: files[0].name })}</span>
               </div>
             )}
 
@@ -176,12 +207,57 @@ export default function UploadPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 {sharedFile ? t("upload.fileLabelShared") : t("upload.fileLabel")}
               </label>
-              <input ref={fileInputRef} type="file"
-                accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-                required={!sharedFile}
-                onChange={(e) => { setFile(e.target.files?.[0] ?? null); setSharedFile(false); }}
-                className="block w-full text-sm text-gray-600 dark:text-gray-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 dark:file:bg-indigo-900/40 file:text-indigo-700 dark:file:text-indigo-300 hover:file:bg-indigo-100 cursor-pointer" />
-              {file && !sharedFile && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{file.name}</p>}
+
+              {/* File chips */}
+              {files.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {files.map((f, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-medium px-2.5 py-1 rounded-full border border-indigo-200 dark:border-indigo-700"
+                    >
+                      <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span className="max-w-[160px] truncate" title={f.name}>{f.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(i)}
+                        className="ml-0.5 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                        aria-label={`Eliminar ${f.name}`}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* File input — always visible to add more */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <span className="inline-flex items-center gap-1.5 py-2 px-4 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors bg-white dark:bg-gray-800">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  {files.length === 0 ? t("upload.fileLabel") : t("upload.fileAddMore")}
+                </span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+                  onChange={(e) => { addFiles(e.target.files); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                  className="sr-only"
+                />
+              </label>
+
+              {files.length > 0 && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+                  {files.length === 1
+                    ? t("upload.fileSelected").replace("{n}", "1")
+                    : t("upload.filesSelected").replace("{n}", String(files.length))}
+                </p>
+              )}
             </div>
 
             <div>
@@ -198,35 +274,62 @@ export default function UploadPage() {
               </label>
             </div>
 
-            <button type="submit" disabled={loading || (!file && !sharedFile)}
+            <button type="submit" disabled={loading || files.length === 0}
               className="w-full py-3 px-4 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-              {loading ? t("upload.submitting") : t("upload.submit")}
+              {loading && uploadProgress
+                ? t("upload.submitting")
+                    .replace("{current}", String(uploadProgress.current))
+                    .replace("{total}", String(uploadProgress.total))
+                : files.length > 1
+                  ? t("upload.submitMulti").replace("{n}", String(files.length))
+                  : t("upload.submit")}
             </button>
+
+            {/* Progress bar while uploading */}
+            {loading && uploadProgress && uploadProgress.total > 1 && (
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-indigo-500 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.round((uploadProgress.current / uploadProgress.total) * 100)}%` }}
+                />
+              </div>
+            )}
           </form>
 
-          {error && (
-            <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl p-4 text-sm">
-              <strong>{t("upload.errorPrefix")}</strong> {error}
+          {/* Per-file errors */}
+          {errors.length > 0 && (
+            <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl p-4 text-sm space-y-1">
+              <strong>{t("upload.errorPrefix")}</strong>
+              <ul className="list-disc list-inside mt-1">
+                {errors.map((e, i) => (
+                  <li key={i}><span className="font-medium">{e.filename}:</span> {e.message}</li>
+                ))}
+              </ul>
             </div>
           )}
 
-          {result && (
-            <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-300 rounded-xl p-5 text-sm space-y-2">
-              <div className="font-semibold text-base">{t("upload.successTitle")}</div>
-              <div>{t("upload.successBank")} {result.bank_id}</div>
-              <div>{t("upload.successCount")} <strong>{result.transactions_imported}</strong></div>
-              <div>{t("upload.successAccount")} {String(result.metadata.account_holder ?? "—")}</div>
-              <div>{t("upload.successBalance")} {String(result.metadata.current_balance ?? "—")} EUR</div>
-              {result.parse_warnings.length > 0 && (
-                <div className="mt-2 text-yellow-700 dark:text-yellow-400">
-                  <div className="font-medium">{t("upload.warningsTitle")}</div>
-                  <ul className="list-disc list-inside">
-                    {result.parse_warnings.slice(0, 5).map((w, i) => <li key={i}>{w}</li>)}
-                  </ul>
+          {/* Per-file success results */}
+          {results.length > 0 && (
+            <div className="space-y-3">
+              {results.map((result, i) => (
+                <div key={i} className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-300 rounded-xl p-5 text-sm space-y-1.5">
+                  <div className="font-semibold text-base">{t("upload.successTitle")}</div>
+                  <div>{t("upload.successBank")} {result.bank_id}</div>
+                  <div>{t("upload.successCount")} <strong>{result.transactions_imported}</strong></div>
+                  <div>{t("upload.successAccount")} {String(result.metadata.account_holder ?? "—")}</div>
+                  <div>{t("upload.successBalance")} {String(result.metadata.current_balance ?? "—")} EUR</div>
+                  {result.parse_warnings.length > 0 && (
+                    <div className="mt-2 text-yellow-700 dark:text-yellow-400">
+                      <div className="font-medium">{t("upload.warningsTitle")}</div>
+                      <ul className="list-disc list-inside">
+                        {result.parse_warnings.slice(0, 5).map((w, j) => <li key={j}>{w}</li>)}
+                      </ul>
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="mt-3">
-                <a href="/" className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">
+              ))}
+              <div className="text-right">
+                <a href="/" className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline text-sm">
                   {t("upload.dashboardLink")}
                 </a>
               </div>
