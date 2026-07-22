@@ -498,8 +498,17 @@ function SuggestionCard({
         </span>
 
         {/* Raw description */}
-        <span className="text-xs font-mono text-gray-400 dark:text-gray-500 truncate shrink-0 max-w-[14rem]" title={m.raw}>
-          {m.raw}
+        <span className="relative group/tooltip shrink-0 max-w-[14rem]">
+          <span className="text-xs font-mono text-gray-400 dark:text-gray-500 truncate block" title={m.raw}>
+            {m.raw}
+          </span>
+          {m.original_description && (
+            <span className="pointer-events-none absolute bottom-full left-0 mb-1.5 z-20 hidden group-hover/tooltip:block">
+              <span className="block bg-gray-900 dark:bg-gray-700 text-white text-xs font-mono px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap max-w-xs truncate">
+                {m.original_description}
+              </span>
+            </span>
+          )}
         </span>
 
         <span className="text-gray-300 dark:text-gray-600 shrink-0">→</span>
@@ -570,7 +579,16 @@ function SuggestionCard({
           {shown.map((m, i) => (
             <li key={i} className="flex items-center gap-2">
               <span className="text-xs text-gray-400 w-8 text-right shrink-0">×{m.count}</span>
-              <span className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate flex-1">{m.raw}</span>
+              <span className="relative group/tooltip flex-1 min-w-0">
+                <span className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate block">{m.raw}</span>
+                {m.original_description && (
+                  <span className="pointer-events-none absolute bottom-full left-0 mb-1.5 z-20 hidden group-hover/tooltip:block">
+                    <span className="block bg-gray-900 dark:bg-gray-700 text-white text-xs font-mono px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap max-w-xs truncate">
+                      {m.original_description}
+                    </span>
+                  </span>
+                )}
+              </span>
               <button
                 onClick={() => handleClean(m.raw)}
                 disabled={cleaningRaw === m.raw}
@@ -636,6 +654,151 @@ function SuggestionCard({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CleanTab — quick manual clean for uncleaned transactions
+// ---------------------------------------------------------------------------
+
+const CLEAN_PAGE = 50;
+
+function CleanTab({ onCleaned }: { onCleaned: () => void }) {
+  const { t } = useT();
+  const [items, setItems] = useState<import("@/lib/api").Transaction[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const load = useCallback(async (offset = 0, append = false) => {
+    if (offset === 0) setLoading(true); else setLoadingMore(true);
+    try {
+      const data = await api.transactions({
+        uncleaned: true,
+        sort_by: "date",
+        sort_dir: "desc",
+        limit: CLEAN_PAGE,
+        offset,
+      });
+      setTotal(data.total);
+      setItems((prev) => append ? [...prev, ...data.items] : data.items);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, []);
+
+  useEffect(() => { load(0); }, [load]);
+
+  async function handleSave(tx: import("@/lib/api").Transaction) {
+    const val = (values[tx.id] ?? "").trim();
+    if (!val) return;
+    setSaving((s) => ({ ...s, [tx.id]: true }));
+    try {
+      await api.patchTransaction(tx.id, { clean_description: val });
+      // Remove from list and focus next
+      setItems((prev) => {
+        const idx = prev.findIndex((t) => t.id === tx.id);
+        const next = prev[idx + 1];
+        // Schedule focus after re-render
+        if (next) setTimeout(() => inputRefs.current[next.id]?.focus(), 50);
+        return prev.filter((t) => t.id !== tx.id);
+      });
+      setValues((v) => { const copy = { ...v }; delete copy[tx.id]; return copy; });
+      setTotal((n) => Math.max(0, n - 1));
+      onCleaned();
+    } catch { /* keep the row on error */ } finally {
+      setSaving((s) => { const copy = { ...s }; delete copy[tx.id]; return copy; });
+    }
+  }
+
+  if (loading) {
+    return <div className="py-12 text-center text-sm text-gray-400">{t("rulesPage.loading")}</div>;
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="py-16 text-center">
+        <p className="text-2xl mb-2">✓</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{t("rulesPage.cleanEmpty")}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className="text-xs text-gray-400 dark:text-gray-500 mb-2 px-1">{t("rulesPage.cleanHint")}</p>
+
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        {items.map((tx, idx) => {
+          const placeholder = tx.stripped_description ?? tx.description;
+          const isSaving = saving[tx.id] ?? false;
+          return (
+            <div
+              key={tx.id}
+              className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+            >
+              {/* Date */}
+              <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 w-24 tabular-nums">
+                {formatDate(tx.date)}
+              </span>
+
+              {/* Input */}
+              <input
+                ref={(el) => { inputRefs.current[tx.id] = el; }}
+                className="flex-1 min-w-0 bg-transparent border-0 border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 py-0.5 transition-colors"
+                placeholder={placeholder}
+                value={values[tx.id] ?? ""}
+                disabled={isSaving}
+                autoFocus={idx === 0}
+                onChange={(e) => setValues((v) => ({ ...v, [tx.id]: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); handleSave(tx); }
+                  if (e.key === "Escape") {
+                    setValues((v) => ({ ...v, [tx.id]: "" }));
+                    // Move focus to next without saving
+                    const next = items[idx + 1];
+                    if (next) setTimeout(() => inputRefs.current[next.id]?.focus(), 0);
+                  }
+                }}
+              />
+
+              {/* Amount */}
+              <span className={`text-xs font-mono font-medium shrink-0 w-20 text-right tabular-nums ${
+                tx.amount < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
+              }`}>
+                {formatEur(tx.amount)}
+              </span>
+
+              {/* Save button */}
+              <button
+                onClick={() => handleSave(tx)}
+                disabled={isSaving || !(values[tx.id] ?? "").trim()}
+                className="shrink-0 text-xs px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                tabIndex={-1}
+              >
+                {isSaving ? "…" : "↵"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Load more */}
+      {items.length < total && (
+        <button
+          onClick={() => load(items.length, true)}
+          disabled={loadingMore}
+          className="mt-3 w-full py-2.5 text-sm text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
+        >
+          {loadingMore ? "…" : t("rulesPage.cleanLoadMore")}
+          <span className="ml-1 text-xs text-gray-400">({total - items.length} restantes)</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -906,10 +1069,11 @@ export default function RulesPage() {
   const [rules, setRules] = useState<DescriptionRule[]>([]);
   const [suggestions, setSuggestions] = useState<SuggestionGroup[]>([]);
   const [uncoveredTotal, setUncoveredTotal] = useState(0);
+  const [cleanTotal, setCleanTotal] = useState(0);
   const [dismissedCanonicals, setDismissedCanonicals] = useState<Set<string>>(new Set());
   const [loadingRules, setLoadingRules] = useState(true);
   const [loadingSuggestions, setLoadingSuggestions] = useState(true);
-  const [tab, setTab] = useState<"rules" | "suggestions" | "strip">("suggestions");
+  const [tab, setTab] = useState<"rules" | "suggestions" | "strip" | "clean">("suggestions");
   const [search, setSearch] = useState("");
   const [recategorizing, setRecategorizing] = useState(false);
   const [recategorizeResult, setRecategorizeResult] = useState<string | null>(null);
@@ -968,6 +1132,8 @@ export default function RulesPage() {
     loadSuggestions();
     loadStripEntries();
     loadStripSuggestions();
+    // Load uncleaned count for the badge
+    api.transactions({ uncleaned: true, limit: 1 }).then((d) => setCleanTotal(d.total)).catch(() => {});
   }, [loadRules, loadSuggestions, loadStripEntries, loadStripSuggestions]);
 
   // --- Rules panel handlers ---
@@ -1160,6 +1326,21 @@ export default function RulesPage() {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setTab("clean")}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                tab === "clean"
+                  ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              }`}
+            >
+              {t("rulesPage.tabClean")}
+              {cleanTotal > 0 && (
+                <span className="ml-1.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
+                  {cleanTotal}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Rules tab */}
@@ -1249,6 +1430,13 @@ export default function RulesPage() {
               recategorizing={stripRecategorizing}
               recategorizeResult={stripRecategorizeResult}
             />
+          )}
+          {/* Clean tab */}
+          {tab === "clean" && (
+            <CleanTab onCleaned={() => {
+              setCleanTotal((n) => Math.max(0, n - 1));
+              loadSuggestions();
+            }} />
           )}
         </div>
       </div>

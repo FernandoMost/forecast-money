@@ -592,6 +592,7 @@ class SqliteStore:
         subcategory: str | None = None,
         bank_id: str | None = None,
         clean_description: str | None = None,
+        uncleaned: bool = False,
         sort_by: str = "date",
         sort_dir: str = "desc",
         limit: int = 100,
@@ -631,6 +632,12 @@ class SqliteStore:
         if clean_description is not None:
             conditions.append("clean_description = ?")
             params.append(clean_description)
+        if uncleaned:
+            conditions.append(
+                "(clean_description IS NULL"
+                " AND (clean_description_source IS NULL"
+                "      OR clean_description_source NOT IN ('manual', 'clean')))"
+            )
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

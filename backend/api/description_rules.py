@@ -268,6 +268,22 @@ _NOISE_PATTERNS = [
 ]
 
 
+def _get_original_description(store: SqliteStore, stripped: str) -> str | None:
+    """Return the most recent raw (pre-strip) description for a given stripped value.
+    Returns None when it equals the stripped value (no strip was applied)."""
+    with store._connect() as conn:
+        row = conn.execute(
+            """SELECT description FROM transactions
+               WHERE COALESCE(stripped_description, description) = ?
+               ORDER BY date DESC LIMIT 1""",
+            (stripped,),
+        ).fetchone()
+    if not row:
+        return None
+    original = row[0]
+    return original if original != stripped else None
+
+
 def _normalize(description: str) -> str:
     upper = description.upper()
     nfkd = unicodedata.normalize("NFKD", upper)
@@ -371,7 +387,14 @@ def get_suggestions(
             canonical=canonical,
             suggested_label=label_text,
             suggested_patterns=common,
-            members=[{"raw": m, "count": raw_freq[m]} for m in sorted(members, key=lambda m: -raw_freq[m])],
+            members=[
+                {
+                    "raw": m,
+                    "count": raw_freq[m],
+                    "original_description": _get_original_description(store, m),
+                }
+                for m in sorted(members, key=lambda m: -raw_freq[m])
+            ],
             total_count=total_count,
         ))
 

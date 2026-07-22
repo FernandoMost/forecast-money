@@ -349,6 +349,7 @@ def list_transactions(
     subcategory: str | None = Query(None, description="Filter by subcategory"),
     bank_id: str | None = Query(None, description="Filter by bank"),
     clean_description: str | None = Query(None, description="Filter by exact clean_description (rule label)"),
+    uncleaned: bool = Query(False, description="Return only transactions without a clean_description"),
     sort_by: str = Query("date", description="Column to sort by: date|amount|balance|description|category|month"),
     sort_dir: str = Query("desc", description="Sort direction: asc|desc"),
     limit: int = Query(100, ge=1, le=1000),
@@ -357,7 +358,7 @@ def list_transactions(
 ):
     result = store.get_transactions(
         month=month, year=year, category=category, subcategory=subcategory,
-        bank_id=bank_id, clean_description=clean_description,
+        bank_id=bank_id, clean_description=clean_description, uncleaned=uncleaned,
         sort_by=sort_by, sort_dir=sort_dir,
         limit=limit, offset=offset,
     )
@@ -394,11 +395,22 @@ def patch_transaction(
         if not _re.match(r"^\d{4}-\d{2}$", body.month):
             raise HTTPException(status_code=422, detail="month must be in YYYY-MM format.")
 
+    # Derive category automatically when clean_description is provided without an explicit category
+    derived_category: str | None = body.category
+    derived_subcategory: str | None = body.subcategory
+    if body.clean_description is not None and body.category is None:
+        tx_raw = store.get_transaction_by_id(tx_id)
+        if tx_raw:
+            strip_config = store.get_strip_config()
+            cat_result = categorize_transaction(tx_raw, strip_config=strip_config)
+            derived_category = cat_result.get("category")
+            derived_subcategory = cat_result.get("subcategory")
+
     updated = store.update_transaction_manual(
         tx_id=tx_id,
         clean_description=body.clean_description,
-        category=body.category,
-        subcategory=body.subcategory,
+        category=derived_category,
+        subcategory=derived_subcategory,
         month=body.month,
     )
     if not updated:
