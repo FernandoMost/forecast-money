@@ -8,11 +8,10 @@ import {
   SuggestionsResponse,
   RuleListResponse,
   StripConfigEntry,
-  StripSuggestion,
   Transaction,
 } from "@/lib/api";
 import { useT } from "@/lib/i18n";
-import { formatDate, formatEur } from "@/lib/utils";
+import { formatDate, formatDateSlash, formatEur } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -172,7 +171,7 @@ function RuleTransactions({ label }: { label: string }) {
                   key={tx.id}
                   className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-white/60 dark:hover:bg-gray-800/30"
                 >
-                  <td className="py-1.5 text-gray-600 dark:text-gray-300 whitespace-nowrap">{formatDate(tx.date)}</td>
+                  <td className="py-1.5 text-gray-600 dark:text-gray-300 whitespace-nowrap">{formatDateSlash(tx.date)}</td>
                   <td className="py-1.5 pl-4 text-gray-500 dark:text-gray-400 truncate max-w-xs" title={tx.description}>{tx.description}</td>
                   <td className={`py-1.5 text-right font-mono font-medium whitespace-nowrap ${tx.amount < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                     {formatEur(tx.amount)}
@@ -743,8 +742,8 @@ function CleanTab({ onCleaned }: { onCleaned: () => void }) {
               className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
             >
               {/* Date */}
-              <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 w-24 tabular-nums">
-                {formatDate(tx.date)}
+              <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 w-28 tabular-nums">
+                {formatDateSlash(tx.date)}
               </span>
 
               {/* Input */}
@@ -867,9 +866,7 @@ function StripAddInput({
 
 function StripTab({
   entries,
-  suggestions,
   loadingEntries,
-  loadingSuggestions,
   onAdd,
   onDelete,
   onRecategorize,
@@ -877,9 +874,7 @@ function StripTab({
   recategorizeResult,
 }: {
   entries: StripConfigEntry[];
-  suggestions: StripSuggestion[];
   loadingEntries: boolean;
-  loadingSuggestions: boolean;
   onAdd: (type: "prefix" | "suffix", value: string) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   onRecategorize: () => void;
@@ -890,8 +885,6 @@ function StripTab({
 
   const prefixes = entries.filter((e) => e.type === "prefix");
   const suffixes = entries.filter((e) => e.type === "suffix");
-  const suggestedPrefixes = suggestions.filter((s) => s.type === "prefix");
-  const suggestedSuffixes = suggestions.filter((s) => s.type === "suffix");
 
   return (
     <div className="flex flex-col gap-6">
@@ -916,18 +909,11 @@ function StripTab({
             ) : (
               <div className="flex flex-wrap gap-2 mb-2">
                 {prefixes.map((e) => (
-                  <StripEntryChip
-                    key={e.id}
-                    entry={e}
-                    onDelete={() => onDelete(e.id)}
-                  />
+                  <StripEntryChip key={e.id} entry={e} onDelete={() => onDelete(e.id)} />
                 ))}
               </div>
             )}
-            <StripAddInput
-              placeholder={t("rulesPage.addPrefix")}
-              onAdd={(v) => onAdd("prefix", v)}
-            />
+            <StripAddInput placeholder={t("rulesPage.addPrefix")} onAdd={(v) => onAdd("prefix", v)} />
           </div>
 
           {/* Suffixes */}
@@ -942,18 +928,11 @@ function StripTab({
             ) : (
               <div className="flex flex-wrap gap-2 mb-2">
                 {suffixes.map((e) => (
-                  <StripEntryChip
-                    key={e.id}
-                    entry={e}
-                    onDelete={() => onDelete(e.id)}
-                  />
+                  <StripEntryChip key={e.id} entry={e} onDelete={() => onDelete(e.id)} />
                 ))}
               </div>
             )}
-            <StripAddInput
-              placeholder={t("rulesPage.addSuffix")}
-              onAdd={(v) => onAdd("suffix", v)}
-            />
+            <StripAddInput placeholder={t("rulesPage.addSuffix")} onAdd={(v) => onAdd("suffix", v)} />
           </div>
 
           {/* Apply button */}
@@ -964,9 +943,7 @@ function StripTab({
                 disabled={recategorizing}
                 className="text-sm px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
-                {recategorizing
-                  ? t("rulesPage.stripApplying")
-                  : t("rulesPage.stripApply")}
+                {recategorizing ? t("rulesPage.stripApplying") : t("rulesPage.stripApply")}
               </button>
               {recategorizeResult && (
                 <span className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-3 py-1.5 rounded-lg">
@@ -977,85 +954,6 @@ function StripTab({
           )}
         </div>
       )}
-
-      {/* Suggestions */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-          {t("rulesPage.stripSuggestionsTitle")}
-        </h3>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
-          {t("rulesPage.stripSuggestionsDesc")}
-        </p>
-
-        {loadingSuggestions ? (
-          <div className="text-sm text-gray-400 text-center py-4">{t("rulesPage.loading")}</div>
-        ) : suggestions.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-gray-500">
-            {t("rulesPage.stripNoSuggestions")}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {suggestedPrefixes.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-                  {t("rulesPage.stripFrequentPrefixes")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {suggestedPrefixes.map((s) => (
-                    <div
-                      key={s.value}
-                      className="inline-flex items-center gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-1"
-                    >
-                      <span className="text-sm font-mono text-amber-800 dark:text-amber-300">
-                        {s.value}
-                      </span>
-                      <span className="text-xs text-amber-600 dark:text-amber-500">
-                        ×{s.count}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => onAdd("prefix", s.value)}
-                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
-                      >
-                        {t("rulesPage.stripAddAsPrefix")}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {suggestedSuffixes.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-                  {t("rulesPage.stripFrequentSuffixes")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {suggestedSuffixes.map((s) => (
-                    <div
-                      key={s.value}
-                      className="inline-flex items-center gap-2 bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800 rounded-lg px-2.5 py-1"
-                    >
-                      <span className="text-sm font-mono text-sky-800 dark:text-sky-300">
-                        {s.value}
-                      </span>
-                      <span className="text-xs text-sky-600 dark:text-sky-500">
-                        ×{s.count}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => onAdd("suffix", s.value)}
-                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
-                      >
-                        {t("rulesPage.stripAddAsSuffix")}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -1080,9 +978,7 @@ export default function RulesPage() {
 
   // Strip config state
   const [stripEntries, setStripEntries] = useState<StripConfigEntry[]>([]);
-  const [stripSuggestions, setStripSuggestions] = useState<StripSuggestion[]>([]);
   const [loadingStripEntries, setLoadingStripEntries] = useState(true);
-  const [loadingStripSuggestions, setLoadingStripSuggestions] = useState(true);
   const [stripRecategorizing, setStripRecategorizing] = useState(false);
   const [stripRecategorizeResult, setStripRecategorizeResult] = useState<string | null>(null);
 
@@ -1117,24 +1013,13 @@ export default function RulesPage() {
     }
   }, []);
 
-  const loadStripSuggestions = useCallback(async () => {
-    setLoadingStripSuggestions(true);
-    try {
-      const data = await api.stripSuggestions();
-      setStripSuggestions(data.suggestions);
-    } finally {
-      setLoadingStripSuggestions(false);
-    }
-  }, []);
-
   useEffect(() => {
     loadRules();
     loadSuggestions();
     loadStripEntries();
-    loadStripSuggestions();
     // Load uncleaned count for the badge
     api.transactions({ uncleaned: true, limit: 1 }).then((d) => setCleanTotal(d.total)).catch(() => {});
-  }, [loadRules, loadSuggestions, loadStripEntries, loadStripSuggestions]);
+  }, [loadRules, loadSuggestions, loadStripEntries]);
 
   // --- Rules panel handlers ---
   function handleRuleSaved(updated: DescriptionRule) {
@@ -1183,8 +1068,6 @@ export default function RulesPage() {
     try {
       const entry = await api.addStripEntry(type, value);
       setStripEntries((prev) => [...prev, entry]);
-      // Refresh suggestions (newly added entry is excluded from them)
-      loadStripSuggestions();
     } catch (e: unknown) {
       console.error(e);
     }
@@ -1194,7 +1077,6 @@ export default function RulesPage() {
     try {
       await api.deleteStripEntry(id);
       setStripEntries((prev) => prev.filter((e) => e.id !== id));
-      loadStripSuggestions();
     } catch (e: unknown) {
       console.error(e);
     }
@@ -1421,9 +1303,7 @@ export default function RulesPage() {
           {tab === "strip" && (
             <StripTab
               entries={stripEntries}
-              suggestions={stripSuggestions}
               loadingEntries={loadingStripEntries}
-              loadingSuggestions={loadingStripSuggestions}
               onAdd={handleStripAdd}
               onDelete={handleStripDelete}
               onRecategorize={handleStripRecategorize}

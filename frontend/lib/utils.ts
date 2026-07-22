@@ -54,6 +54,18 @@ export function formatDate(date: string, locale = "es-ES"): string {
   }).format(d);
 }
 
+/**
+ * Format a YYYY-MM-DD date string as "D/monthName/YYYY".
+ * e.g. "2024-05-12" → "12/mayo/2024" (es) / "12/May/2024" (en)
+ * Used in compact list views (CleanTab, RuleTransactions).
+ */
+export function formatDateSlash(date: string, locale = "es-ES"): string {
+  const [year, mon, day] = date.split("-");
+  const d = new Date(Date.UTC(Number(year), Number(mon) - 1, Number(day)));
+  const monthName = new Intl.DateTimeFormat(locale, { month: "long", timeZone: "UTC" }).format(d);
+  return `${Number(day)}/${monthName}/${year}`;
+}
+
 export const STATUS_COLORS: Record<string, string> = {
   green: "text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800",
   amber: "text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/40 border-yellow-200 dark:border-yellow-800",
