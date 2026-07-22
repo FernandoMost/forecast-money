@@ -161,15 +161,16 @@ def categorize(description: str) -> tuple[str, str]:
     return "uncategorized", "other"
 
 
-def categorize_transaction(tx: dict) -> dict:
-    """Returns the transaction dict with category and clean_description filled."""
-    cat, sub = categorize(tx["description"])
-    label = rule_clean(tx["description"])
+def categorize_transaction(tx: dict, strip_config: list[dict] | None = None) -> dict:
+    """Returns the transaction dict with category, stripped_description and clean_description filled."""
+    from categorizer.description_cleaner import clean_transaction as _clean_tx
+    cleaned = _clean_tx(tx, strip_config=strip_config)
+    # Use stripped_description for category matching if available
+    desc_for_cat = cleaned.get("stripped_description") or tx["description"]
+    cat, sub = categorize(desc_for_cat)
     return {
-        **tx,
+        **cleaned,
         "category": cat,
         "subcategory": sub,
         "category_source": "rule",
-        "clean_description": label,
-        "clean_description_source": "rule" if label else None,
     }

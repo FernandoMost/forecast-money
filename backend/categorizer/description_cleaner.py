@@ -173,9 +173,41 @@ def reload_rules() -> int:
 # Public API
 # ---------------------------------------------------------------------------
 
+def apply_strip_config(description: str, strip_config: list[dict]) -> str:
+    """
+    Remove user-configured prefixes and suffixes from a raw bank description.
+
+    Matching is case-insensitive and normalises internal whitespace so that
+    minor formatting differences (single vs. double spaces) don't prevent a match.
+
+    strip_config is a list of dicts with keys: type ('prefix'|'suffix'), value (str).
+    Entries are applied in order; each pass works on the result of the previous one.
+    """
+    import re as _re
+
+    def _normalise_spaces(s: str) -> str:
+        return _re.sub(r"\s+", " ", s).strip()
+
+    result = _normalise_spaces(description)
+
+    for entry in strip_config:
+        v = _normalise_spaces(entry["value"])
+        if not v:
+            continue
+        if entry["type"] == "prefix":
+            # case-insensitive prefix match
+            if result.upper().startswith(v.upper()):
+                result = _normalise_spaces(result[len(v):])
+        elif entry["type"] == "suffix":
+            if result.upper().endswith(v.upper()):
+                result = _normalise_spaces(result[:-len(v)])
+
+    return result or description  # never return an empty string
+
+
 def clean_description(description: str) -> str | None:
     """
-    Returns a short human-friendly label for a raw bank description.
+    Returns a short human-friendly label for a (possibly pre-stripped) bank description.
     Returns None if no rule matches.
     """
     for rule in _RULES:
@@ -185,11 +217,21 @@ def clean_description(description: str) -> str | None:
     return None
 
 
-def clean_transaction(tx: dict) -> dict:
-    """Returns the transaction dict with clean_description filled (or None if unmatched)."""
-    label = clean_description(tx["description"])
+def clean_transaction(tx: dict, strip_config: list[dict] | None = None) -> dict:
+    """
+    Returns the transaction dict with stripped_description and clean_description filled.
+
+    If strip_config is provided the user's prefixes/suffixes are applied first and the
+    result is stored as stripped_description.  The regex rules then run on that
+    stripped value.  If strip_config is not provided (or empty) stripped_description
+    is set to the raw description (i.e. no change).
+    """
+    raw = tx["description"]
+    stripped = apply_strip_config(raw, strip_config) if strip_config else raw
+    label = clean_description(stripped)
     return {
         **tx,
+        "stripped_description": stripped,
         "clean_description": label,
         "clean_description_source": "rule" if label else None,
     }

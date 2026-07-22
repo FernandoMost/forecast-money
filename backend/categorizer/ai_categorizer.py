@@ -95,17 +95,22 @@ class AiCategorizer:
     # Public API
     # ------------------------------------------------------------------
 
-    def categorize_transaction(self, tx: dict) -> dict:
-        description = tx["description"]
+    def categorize_transaction(self, tx: dict, strip_config: list[dict] | None = None) -> dict:
+        from categorizer.description_cleaner import apply_strip_config
 
-        # 1. Rules first — fast, deterministic, no IO
-        rule_cat, rule_sub = categorize(description)
-        rule_label = rule_clean(description)
+        raw_description = tx["description"]
+        # Apply user strip config to get the intermediate description
+        stripped = apply_strip_config(raw_description, strip_config) if strip_config else raw_description
+
+        # 1. Rules first — fast, deterministic, no IO — use stripped description
+        rule_cat, rule_sub = categorize(stripped)
+        rule_label = rule_clean(stripped)
         rules_matched = rule_cat != "uncategorized" or rule_label is not None
 
         if rules_matched:
             return {
                 **tx,
+                "stripped_description": stripped,
                 "category": rule_cat,
                 "subcategory": rule_sub,
                 "category_source": "rule",
@@ -113,11 +118,12 @@ class AiCategorizer:
                 "clean_description_source": "rule" if rule_label else None,
             }
 
-        # 2. Cache — result from a previous AI session
-        cached = self._cache_get(description)
+        # 2. Cache — result from a previous AI session (keyed by raw description)
+        cached = self._cache_get(raw_description)
         if cached:
             return {
                 **tx,
+                "stripped_description": stripped,
                 "category": cached["category"],
                 "subcategory": cached["subcategory"],
                 "category_source": "cache",
@@ -127,16 +133,17 @@ class AiCategorizer:
 
         # 3. Ollama — only for descriptions unknown to rules and not yet cached
         if self._is_ollama_available():
-            result = self._call_ollama(description)
+            result = self._call_ollama(stripped)
             if result:
                 self._cache_set(
-                    description,
+                    raw_description,
                     result["category"],
                     result["subcategory"],
                     result.get("clean_description"),
                 )
                 return {
                     **tx,
+                    "stripped_description": stripped,
                     "category": result["category"],
                     "subcategory": result["subcategory"],
                     "category_source": "ai",
@@ -147,6 +154,7 @@ class AiCategorizer:
         # 4. Pure rule fallback (Ollama unavailable, nothing cached)
         return {
             **tx,
+            "stripped_description": stripped,
             "category": rule_cat,
             "subcategory": rule_sub,
             "category_source": "rule",
