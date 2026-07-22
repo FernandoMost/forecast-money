@@ -473,9 +473,9 @@ class SqliteStore:
                        SET category             = CASE WHEN category_source = 'manual' THEN category ELSE ? END,
                            subcategory          = CASE WHEN category_source = 'manual' THEN subcategory ELSE ? END,
                            category_source      = CASE WHEN category_source = 'manual' THEN 'manual' ELSE ? END,
-                           clean_description        = CASE WHEN clean_description_source = 'manual' THEN clean_description ELSE ? END,
-                           clean_description_source = CASE WHEN clean_description_source = 'manual' THEN 'manual' ELSE ? END,
-                           stripped_description     = CASE WHEN clean_description_source = 'manual' THEN stripped_description ELSE ? END
+                           clean_description        = CASE WHEN clean_description_source IN ('manual', 'clean') THEN clean_description ELSE ? END,
+                           clean_description_source = CASE WHEN clean_description_source IN ('manual', 'clean') THEN clean_description_source ELSE ? END,
+                           stripped_description     = CASE WHEN clean_description_source IN ('manual', 'clean') THEN stripped_description ELSE ? END
                        WHERE id=?""",
                     (
                         u["category"], u["subcategory"], u["category_source"],
@@ -568,10 +568,15 @@ class SqliteStore:
         return dict(zip(cols, row))
 
     def get_all_descriptions(self) -> list[dict]:
-        """Returns id + bank_id + description + stripped_description for every transaction — used by recategorize."""
+        """Returns id + bank_id + description + stripped_description for every transaction
+        that still needs categorization (excludes manual and clean edits)."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, bank_id, description, stripped_description FROM transactions ORDER BY date DESC"
+                """SELECT id, bank_id, description, stripped_description
+                   FROM transactions
+                   WHERE clean_description_source NOT IN ('manual', 'clean')
+                      OR clean_description_source IS NULL
+                   ORDER BY date DESC"""
             ).fetchall()
         return [{"id": r[0], "bank_id": r[1], "description": r[2], "stripped_description": r[3]} for r in rows]
 
