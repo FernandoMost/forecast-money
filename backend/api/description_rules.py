@@ -85,6 +85,20 @@ class SuggestionsResponse(BaseModel):
     uncovered_total: int
 
 
+class DismissRequest(BaseModel):
+    description: str
+
+
+class MarkCleanRequest(BaseModel):
+    description: str   # the raw/stripped description to match against
+    label: str         # human-friendly label to store as clean_description
+
+
+class MarkCleanResponse(BaseModel):
+    updated: int
+    label: str
+
+
 class ApplyRulesRequest(BaseModel):
     rules: list[RuleCreateRequest]
 
@@ -293,6 +307,8 @@ def get_suggestions(
     store: SqliteStore = Depends(get_store),
     _user=Depends(get_current_user),
 ):
+    dismissed = store.get_dismissed_descriptions()
+
     with store._connect() as conn:
         rows = conn.execute(
             """SELECT COALESCE(stripped_description, description) as desc, COUNT(*) as c
@@ -305,10 +321,17 @@ def get_suggestions(
     if not rows:
         return SuggestionsResponse(groups=[], uncovered_total=0)
 
-    uncovered_total = len(rows)
+    # uncovered_total counts only non-dismissed descriptions
+    all_descs = [(r[0], r[1]) for r in rows]
+    uncovered_total = sum(1 for d, _ in all_descs if d not in dismissed)
+
+    # Filter out dismissed before grouping
+    rows_filtered = [(d, c) for d, c in all_descs if d not in dismissed]
+    if not rows_filtered:
+        return SuggestionsResponse(groups=[], uncovered_total=uncovered_total)
     raw_to_canonical: dict[str, str] = {}
     raw_freq: dict[str, int] = {}
-    for raw, count in rows:
+    for raw, count in rows_filtered:
         canonical = _normalize(raw)
         raw_to_canonical[raw] = canonical if canonical else raw.upper()
         raw_freq[raw] = count
@@ -354,6 +377,39 @@ def get_suggestions(
 
     groups.sort(key=lambda g: -g.total_count)
     return SuggestionsResponse(groups=groups[:limit], uncovered_total=uncovered_total)
+
+
+# ---------------------------------------------------------------------------
+# POST /description-suggestions/dismiss  — permanently hide a suggestion
+# ---------------------------------------------------------------------------
+
+@router.post("/description-suggestions/dismiss", status_code=204)
+def dismiss_suggestion(
+    body: DismissRequest,
+    store: SqliteStore = Depends(get_store),
+    _user=Depends(get_current_user),
+):
+    """Permanently dismiss a description from suggestions. Survives reloads."""
+    store.add_dismissed_description(body.description)
+
+
+# ---------------------------------------------------------------------------
+# POST /description-suggestions/mark-clean  — mark a description as already clean
+# ---------------------------------------------------------------------------
+
+@router.post("/description-suggestions/mark-clean", response_model=MarkCleanResponse)
+def mark_clean(
+    body: MarkCleanRequest,
+    store: SqliteStore = Depends(get_store),
+    _user=Depends(get_current_user),
+):
+    """
+    Mark every transaction matching description as already clean.
+    Stores the provided label as clean_description with source='clean'.
+    Skips transactions already edited manually.
+    """
+    updated = store.mark_description_clean(body.description, body.label)
+    return MarkCleanResponse(updated=updated, label=body.label)
 
 
 # ---------------------------------------------------------------------------

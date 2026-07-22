@@ -165,6 +165,12 @@ class SqliteStore:
                     UNIQUE(type, value)
                 );
 
+                CREATE TABLE IF NOT EXISTS suggestion_dismissed (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    description  TEXT NOT NULL UNIQUE,
+                    dismissed_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_tx_month    ON transactions(month);
                 CREATE INDEX IF NOT EXISTS idx_tx_date     ON transactions(date);
                 CREATE INDEX IF NOT EXISTS idx_tx_category ON transactions(category);
@@ -858,6 +864,53 @@ class SqliteStore:
                 "DELETE FROM description_strip_config WHERE id = ?", (entry_id,)
             )
         return result.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Suggestion dismissed
+    # ------------------------------------------------------------------
+
+    def get_dismissed_descriptions(self) -> set[str]:
+        """Returns the set of descriptions the user has permanently dismissed."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT description FROM suggestion_dismissed"
+            ).fetchall()
+        return {r[0] for r in rows}
+
+    def add_dismissed_description(self, description: str) -> None:
+        """Permanently dismiss a description from suggestions (INSERT OR IGNORE)."""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO suggestion_dismissed (description) VALUES (?)",
+                (description,),
+            )
+
+    def remove_dismissed_description(self, description: str) -> bool:
+        """Un-dismiss a description. Returns True if a row was removed."""
+        with self._connect() as conn:
+            result = conn.execute(
+                "DELETE FROM suggestion_dismissed WHERE description = ?", (description,)
+            )
+        return result.rowcount > 0
+
+    def mark_description_clean(self, description: str, label: str) -> int:
+        """
+        Set clean_description = label, clean_description_source = 'clean' for every
+        transaction whose COALESCE(stripped_description, description) matches.
+        Skips rows already marked 'manual'.
+        Returns number of rows updated.
+        """
+        with self._connect() as conn:
+            result = conn.execute(
+                """UPDATE transactions
+                   SET clean_description        = ?,
+                       clean_description_source = 'clean'
+                   WHERE COALESCE(stripped_description, description) = ?
+                     AND (clean_description_source IS NULL
+                          OR clean_description_source NOT IN ('manual'))""",
+                (label, description),
+            )
+        return result.rowcount
 
     # ------------------------------------------------------------------
     # Internal

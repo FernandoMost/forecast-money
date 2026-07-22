@@ -18,6 +18,10 @@ import { formatDate, formatEur } from "@/lib/utils";
 // Small helpers
 // ---------------------------------------------------------------------------
 
+function toTitleCase(str: string): string {
+  return str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function PatternTag({
   value,
   onRemove,
@@ -437,10 +441,12 @@ function SuggestionCard({
   group,
   onApplied,
   onDismissed,
+  onMarkClean,
 }: {
   group: SuggestionGroup;
   onApplied: (label: string) => void;
   onDismissed: (canonical: string) => void;
+  onMarkClean: (raw: string) => void;
 }) {
   const { t } = useT();
   const [label, setLabel] = useState(group.suggested_label);
@@ -448,8 +454,18 @@ function SuggestionCard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [cleaningRaw, setCleaningRaw] = useState<string | null>(null);
 
   const patternInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleClean(raw: string) {
+    setCleaningRaw(raw);
+    try {
+      await onMarkClean(raw);
+    } finally {
+      setCleaningRaw(null);
+    }
+  }
 
   async function apply() {
     if (!label.trim()) { setError(t("rulesPage.errorNeedsLabel")); return; }
@@ -518,6 +534,14 @@ function SuggestionCard({
           {saving ? "…" : "↵"}
         </button>
         <button
+          onClick={() => handleClean(group.members[0].raw)}
+          disabled={cleaningRaw === group.members[0].raw}
+          className="text-xs px-2.5 py-1 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-50 shrink-0 whitespace-nowrap"
+          title={t("rulesPage.alreadyClean")}
+        >
+          {cleaningRaw === group.members[0].raw ? t("rulesPage.markingClean") : t("rulesPage.alreadyClean")}
+        </button>
+        <button
           onClick={() => onDismissed(group.canonical)}
           className="text-xs text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 shrink-0"
           title={t("rulesPage.dismiss")}
@@ -546,7 +570,14 @@ function SuggestionCard({
           {shown.map((m, i) => (
             <li key={i} className="flex items-center gap-2">
               <span className="text-xs text-gray-400 w-8 text-right shrink-0">×{m.count}</span>
-              <span className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate">{m.raw}</span>
+              <span className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate flex-1">{m.raw}</span>
+              <button
+                onClick={() => handleClean(m.raw)}
+                disabled={cleaningRaw === m.raw}
+                className="text-xs px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-50 shrink-0 whitespace-nowrap"
+              >
+                {cleaningRaw === m.raw ? t("rulesPage.markingClean") : t("rulesPage.alreadyClean")}
+              </button>
             </li>
           ))}
         </ul>
@@ -963,8 +994,22 @@ export default function RulesPage() {
     setTimeout(() => setRecategorizeResult(null), 4000);
   }
 
-  function handleDismissed(canonical: string) {
+  async function handleDismissed(canonical: string) {
+    // Optimistic UI — hide immediately
     setDismissedCanonicals((prev) => new Set([...prev, canonical]));
+    // Persist — fire and forget (if it fails the dismissal is still in local state for the session)
+    try {
+      await api.dismissSuggestion(canonical);
+    } catch { /* non-critical */ }
+  }
+
+  async function handleMarkClean(raw: string) {
+    const label = toTitleCase(raw);
+    try {
+      await api.markClean(raw, label);
+      // Reload suggestions — that description now has clean_description set
+      loadSuggestions();
+    } catch { /* non-critical */ }
   }
 
   // --- Strip config handlers ---
@@ -1184,6 +1229,7 @@ export default function RulesPage() {
                       group={group}
                       onApplied={handleSuggestionApplied}
                       onDismissed={handleDismissed}
+                      onMarkClean={handleMarkClean}
                     />
                   ))}
                 </div>

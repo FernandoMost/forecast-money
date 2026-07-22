@@ -490,6 +490,10 @@ export const api = {
     del<{ deleted: boolean; label: string }>(`/description-rules/${encodeURIComponent(label)}`),
   descriptionSuggestions: (limit = 50) =>
     get<SuggestionsResponse>(`/description-suggestions?limit=${limit}`),
+  dismissSuggestion: (description: string) =>
+    postJson<void>("/description-suggestions/dismiss", { description }),
+  markClean: (description: string, label: string) =>
+    postJson<{ updated: number; label: string }>("/description-suggestions/mark-clean", { description, label }),
   applyDescriptionRules: (rules: { label: string; patterns: string[]; position?: number }[]) =>
     postJson<ApplyRulesResponse>("/description-rules/apply", { rules }),
 
