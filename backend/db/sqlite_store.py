@@ -562,12 +562,12 @@ class SqliteStore:
         return dict(zip(cols, row))
 
     def get_all_descriptions(self) -> list[dict]:
-        """Returns id + description + stripped_description for every transaction — used by recategorize."""
+        """Returns id + bank_id + description + stripped_description for every transaction — used by recategorize."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, description, stripped_description FROM transactions ORDER BY date DESC"
+                "SELECT id, bank_id, description, stripped_description FROM transactions ORDER BY date DESC"
             ).fetchall()
-        return [{"id": r[0], "description": r[1], "stripped_description": r[2]} for r in rows]
+        return [{"id": r[0], "bank_id": r[1], "description": r[2], "stripped_description": r[3]} for r in rows]
 
     # ------------------------------------------------------------------
     # Transactions — read
