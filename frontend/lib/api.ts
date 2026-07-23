@@ -345,6 +345,7 @@ export interface SuggestionGroup {
   suggested_patterns: string[];
   members: SuggestionMember[];
   total_count: number;
+  latest_date: string | null;
 }
 
 export interface SuggestionsResponse {

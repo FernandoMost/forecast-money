@@ -78,6 +78,7 @@ class SuggestionGroup(BaseModel):
     suggested_patterns: list[str]
     members: list[dict]
     total_count: int
+    latest_date: str | None = None
 
 
 class SuggestionsResponse(BaseModel):
@@ -327,7 +328,7 @@ def get_suggestions(
 
     with store._connect() as conn:
         rows = conn.execute(
-            """SELECT COALESCE(stripped_description, description) as desc, COUNT(*) as c
+            """SELECT COALESCE(stripped_description, description) as desc, COUNT(*) as c, MAX(date) as latest
                FROM transactions
                WHERE clean_description IS NULL
                GROUP BY COALESCE(stripped_description, description)
@@ -338,19 +339,21 @@ def get_suggestions(
         return SuggestionsResponse(groups=[], uncovered_total=0)
 
     # uncovered_total counts only non-dismissed descriptions
-    all_descs = [(r[0], r[1]) for r in rows]
-    uncovered_total = sum(1 for d, _ in all_descs if d not in dismissed)
+    all_descs = [(r[0], r[1], r[2]) for r in rows]
+    uncovered_total = sum(1 for d, _, _ in all_descs if d not in dismissed)
 
     # Filter out dismissed before grouping
-    rows_filtered = [(d, c) for d, c in all_descs if d not in dismissed]
+    rows_filtered = [(d, c, latest) for d, c, latest in all_descs if d not in dismissed]
     if not rows_filtered:
         return SuggestionsResponse(groups=[], uncovered_total=uncovered_total)
     raw_to_canonical: dict[str, str] = {}
     raw_freq: dict[str, int] = {}
-    for raw, count in rows_filtered:
+    raw_latest: dict[str, str | None] = {}
+    for raw, count, latest in rows_filtered:
         canonical = _normalize(raw)
         raw_to_canonical[raw] = canonical if canonical else raw.upper()
         raw_freq[raw] = count
+        raw_latest[raw] = latest
 
     canonical_groups: dict[str, list[str]] = defaultdict(list)
     for raw, canonical in raw_to_canonical.items():
@@ -369,6 +372,7 @@ def get_suggestions(
     groups: list[SuggestionGroup] = []
     for canonical, members in merged.items():
         total_count = sum(raw_freq[m] for m in members)
+        latest_date = max((raw_latest[m] for m in members if raw_latest.get(m)), default=None)
         if len(members) == 1:
             # Single description: use it verbatim as the pattern (already stripped of
             # bank noise by the user's prefix/suffix config).  Escape regex metacharacters
@@ -396,9 +400,16 @@ def get_suggestions(
                 for m in sorted(members, key=lambda m: -raw_freq[m])
             ],
             total_count=total_count,
+            latest_date=latest_date,
         ))
 
-    groups.sort(key=lambda g: -g.total_count)
+    groups.sort(key=lambda g: (-g.total_count, g.latest_date or ""), reverse=False)
+    # secondary: latest_date DESC (negate string won't work, use tuple trick)
+    # Two-pass stable sort: secondary key first, then primary key
+    # 1) latest_date DESC (more recent first)
+    groups.sort(key=lambda g: g.latest_date or "", reverse=True)
+    # 2) total_count DESC (stable: preserves date order for equal counts)
+    groups.sort(key=lambda g: g.total_count, reverse=True)
     return SuggestionsResponse(groups=groups[:limit], uncovered_total=uncovered_total)
 
 
