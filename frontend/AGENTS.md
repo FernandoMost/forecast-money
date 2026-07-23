@@ -3,97 +3,101 @@
 ## Stack
 - Next.js 14, TypeScript, Tailwind CSS
 - TanStack Table v8 (`@tanstack/react-table`) — transactions table
-- Server Components by default; pages with state/effects must be `"use client"`
+- `"use client"` required for any page/component using hooks or event handlers
 - API base: `http://localhost:8000/api/v1` (env: `NEXT_PUBLIC_API_URL`)
 
 ## Routes
-| Path | File | Type | Notes |
-|---|---|---|---|
-| `/` | `app/page.tsx` | Client Component | Dashboard |
-| `/transactions` | `app/transactions/page.tsx` | Client Component | TanStack Table, sort/filter/paginate |
-| `/trends` | `app/trends/page.tsx` | Client Component | Trends view |
-| `/upload` | `app/upload/page.tsx` | Client Component | Statement upload |
-| `/health` | `app/health/page.tsx` | Client Component | Financial health score + rules |
-| `/categories` | `app/categories/page.tsx` | Client Component | Category CRUD |
-| `/rules` | `app/rules/page.tsx` | Client Component | Description rules CRUD + suggestion engine |
-| `/login` | `app/login/page.tsx` | Client Component | Auth |
+| Path | File | Notes |
+|---|---|---|
+| `/` | `app/page.tsx` | Dashboard |
+| `/transactions` | `app/transactions/page.tsx` | TanStack Table, sort/filter/paginate |
+| `/trends` | `app/trends/page.tsx` | Trends view |
+| `/upload` | `app/upload/page.tsx` | Statement upload |
+| `/health` | `app/health/page.tsx` | Financial health score |
+| `/categories` | `app/categories/page.tsx` | Category CRUD |
+| `/rules` | `app/rules/page.tsx` | Description rules + suggestion/clean/strip tabs |
+| `/login` | `app/login/page.tsx` | Auth |
 
 ## Key files
 | File | Role |
 |---|---|
-| `lib/api.ts` | Typed API client — all fetch calls go here |
-| `lib/utils.ts` | `formatEur()`, `formatPercent()`, `formatDate()`, `formatMonth()`, `toIntlLocale()`, `STATUS_COLORS` |
-| `lib/i18n.tsx` | i18n context — `useT()` returns `{ t, locale, setLocale }` |
-| `lib/theme.tsx` | Dark mode — `useTheme()` returns `{ isDark, toggleTheme }` |
-| `lib/translateRule.ts` | Translates health rule IDs + details into localised strings |
+| `lib/api.ts` | Typed API client — all fetch calls |
+| `lib/utils.ts` | `formatEur()`, `formatDate()`, `formatDateSlash()`, `formatMonth()`, `toIntlLocale()`, `STATUS_COLORS` |
+| `lib/i18n.tsx` | `useT()` → `{ t, locale, setLocale }` |
+| `lib/theme.tsx` | `useTheme()` → `{ isDark, toggleTheme }` |
+| `lib/translateRule.ts` | Translates health rule IDs into localised strings |
 | `components/Nav.tsx` | Top navigation bar |
-| `components/CategoryTree.tsx` | Reusable category+subcategory pill selector; also exports `CATEGORY_TREE`, `catLabel()`, `subLabel()` |
+| `components/CategoryTree.tsx` | Category+subcategory pill selector; exports `CATEGORY_TREE`, `catLabel()`, `subLabel()` |
 | `components/Providers.tsx` | Wraps app with i18n + theme providers |
-| `messages/es.json` | Spanish strings — sections: nav, dashboard, transactions, health, categories, rules (financial), rulesPage (UI) |
-| `messages/en.json` | English strings — same sections |
+| `messages/es.json` | Spanish strings |
+| `messages/en.json` | English strings |
 
 ## `lib/api.ts` — key types and calls
 ```typescript
-api.dashboard()              // GET /dashboard → DashboardData
-api.transactions(params)     // GET /transactions → TransactionList
-api.patchTransaction(id, {   // PATCH /transactions/{id}
-  clean_description, category, subcategory   // all optional — omit to preserve
+api.dashboard()
+api.transactions(params)       // supports uncleaned:true to filter WHERE clean_description IS NULL
+api.patchTransaction(id, {
+  clean_description?, category?, subcategory?,
+  month?   // YYYY-MM — moves tx date to 1st of that month (any transaction, not just income)
 })
-api.months()                 // GET /months → { months: string[] }
-api.summary(month)           // GET /summary/{month} → MonthlySummary
+api.months()
+api.summary(month)
 api.upload(file, bank, useAi)
 api.recategorize(useAi)
-// Description rules:
-api.descriptionRules()                                    // GET /description-rules
-api.createDescriptionRule(label, patterns, position?)     // POST
-api.updateDescriptionRule(label, { new_label?, patterns? }) // PUT
-api.deleteDescriptionRule(label)                          // DELETE
-api.descriptionSuggestions(limit?)                        // GET /description-suggestions
-api.applyDescriptionRules(rules[])                        // POST /description-rules/apply
+api.descriptionRules()
+api.createDescriptionRule(label, patterns, position?)
+api.updateDescriptionRule(label, { new_label?, patterns? })
+api.deleteDescriptionRule(label)
+api.descriptionSuggestions(limit?)   // SuggestionGroup now includes latest_date: string | null
+api.applyDescriptionRules(rules[])
+api.dismissSuggestion(canonical)
+api.markClean(raw, label)
 ```
 
-`TransactionList` shape: `{ total, amount_total, limit, offset, items[] }` — `total` and `amount_total` cover the **full unpaginated query**, not just the current page.
+`TransactionList`: `{ total, amount_total, limit, offset, items[] }` — `total`/`amount_total` are full unpaginated counts.
 
-## Date formatting — ALWAYS use these, never raw ISO strings
+## Date formatting — always use these
 ```typescript
-import { formatDate, formatMonth, toIntlLocale } from "@/lib/utils";
-const { locale } = useT();
+import { formatDate, formatDateSlash, formatMonth, toIntlLocale } from "@/lib/utils";
 const intlLocale = toIntlLocale(locale);  // "es" → "es-ES", "en" → "en-GB"
 
-formatDate("2024-05-12", intlLocale)   // "12 mayo 2024" / "12 May 2024"
-formatMonth("2024-05", intlLocale)     // "mayo 2024" / "May 2024"
+formatDate("2024-05-12", intlLocale)       // "12 mayo 2024" / "12 May 2024"
+formatDateSlash("2024-05-12", intlLocale)  // "12/mayo/2024" / "12/May/2024"  ← used in transactions table
+formatMonth("2024-05", intlLocale)         // "mayo 2024" / "May 2024"
 ```
-**Never** render raw `YYYY-MM-DD` or `YYYY-MM` strings to the user.
+Never render raw `YYYY-MM-DD` or `YYYY-MM` strings.
 
-## i18n — important key collision warning
-The `messages/*.json` files have TWO top-level sections that look like "rules":
-- `"rules"` — financial health rule translations (savings_rate, emergency_fund, etc.) — used by `translateRule.ts`
-- `"rulesPage"` — UI strings for the `/rules` page (title, tabRules, addRule, etc.)
+## i18n — key collision warning
+`messages/*.json` has two sections that look like "rules":
+- `"rules"` — financial health rule translations — used by `translateRule.ts`
+- `"rulesPage"` — UI strings for `/rules` page
 
-**Do NOT rename or merge these.** Adding a second `"rules"` key would silently overwrite the financial rules translations (JSON duplicate key bug — already fixed once).
+**Do NOT rename or merge these.**
+
+## Transactions page — conventions
+- `manualSorting: true` — sort state → `sort_by`/`sort_dir` query params
+- `columnResizeMode: "onChange"` — live resize
+- `sort_by` values: `date`, `description`, `category`, `amount`
+- Date column: clicking the date opens `InlineMonthEdit` (available on **all** rows, not just income)
+- Edit column: `_edit` — `enableSorting: false`, `enableResizing: false`
+- `meta: { align: "right" }` on `amount` and `balance`
+- Sticky bottom bar: `fixed bottom-0`, page body has `pb-16`
+
+## Rules page — tabs
+- **Reglas**: description rules CRUD
+- **Sugerencias**: grouped uncleaned descriptions; sorted by `total_count DESC, latest_date DESC`
+- **Limpieza rápida** (`clean`): inline editor for uncleaned transactions; badge count reloads from API (not optimistic decrement) after each save, after applying suggestions, and after mark-clean
+- **Strip**: prefix/suffix strip config
 
 ## CategoryTree component
 ```tsx
-// Filter mode (with "All" option):
-<CategoryTree selected={{ category, subcategory }} onChange={fn} showAll />
-
-// Edit mode (must pick a leaf):
-<CategoryTree selected={{ category, subcategory }} onChange={fn} />
+<CategoryTree selected={{ category, subcategory }} onChange={fn} showAll />  // filter mode
+<CategoryTree selected={{ category, subcategory }} onChange={fn} />           // edit mode
 ```
-The taxonomy lives in `CATEGORY_TREE` (exported from `CategoryTree.tsx`) and **must stay in sync** with `config/category_rules.yaml`.
-
-## Transactions page — TanStack Table conventions
-- `manualSorting: true` — sort state → `sort_by`/`sort_dir` query params, backend does the ordering
-- `columnResizeMode: "onChange"` — live resize with drag handles on `<th>` borders
-- Column `id` values that map to backend `sort_by`: `date`, `description`, `category`, `amount` (balance: `enableSorting: false`)
-- Edit column id: `_edit` — `enableSorting: false`, `enableResizing: false`
-- `meta: { align: "right" }` on `amount` and `balance` columns
-- Sticky bottom bar: `fixed bottom-0` — shows total count, `amount_total`, pagination; page body has `pb-16` to avoid overlap
+Taxonomy in `CATEGORY_TREE` must stay in sync with `config/category_rules.yaml`.
 
 ## Invariants
-- **No calculations in the frontend** — totals, projections, savings rates come from the backend
-- `"use client"` required for any component using hooks or event handlers
-- All data fetching in Server Components uses `{ cache: "no-store" }`
-- Source badges (`ai`, `manual`, `cache`) only rendered when source **≠ `rule`** (rule is the silent default)
+- No calculations in the frontend — totals/projections come from the backend
+- Source badges (`ai`, `manual`, `cache`) only shown when source ≠ `rule`
 - Income rows (`amount > 0 && !is_reversal`): `bg-green-50`, green bold amount, green category pill
-- Expense rows: neutral gray — **no red**, expenses are the majority
+- Expense rows: neutral gray — no red
