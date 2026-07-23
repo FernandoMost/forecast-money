@@ -13,7 +13,7 @@ import {
 } from "@tanstack/react-table";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, PatchTransactionRequest, Transaction, TransactionList } from "@/lib/api";
-import { formatEur, formatDate, toIntlLocale } from "@/lib/utils";
+import { formatEur, formatDateSlash, toIntlLocale } from "@/lib/utils";
 import CategoryTree, {
   useCategoryTree,
   catLabel,
@@ -341,19 +341,20 @@ function InlineCatEdit({
 }
 
 // ---------------------------------------------------------------------------
-// Inline month editor — only for income rows (amount > 0, not reversal)
-// Shows a calendar icon next to the date; click opens a month selector
-// offering available months + the next month after the current one
+// Inline month editor — available on every row; click on the date to open
+// Shows a month selector offering available months + next month after latest
 // ---------------------------------------------------------------------------
 
 function InlineMonthEdit({
   tx,
   availableMonths,
   onSaved,
+  intlLocale,
 }: {
   tx: Transaction;
   availableMonths: string[];
   onSaved: (updated: Partial<Transaction>) => void;
+  intlLocale: string;
 }) {
   const { t } = useT();
   const [editing, setEditing] = useState(false);
@@ -407,26 +408,21 @@ function InlineMonthEdit({
       <button
         onClick={open}
         title={t("transactions.moveMonthTooltip")}
-        className="ml-1 p-0.5 rounded text-green-400 hover:text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors shrink-0"
+        className="text-gray-400 dark:text-gray-500 whitespace-nowrap text-xs tabular-nums hover:text-indigo-500 dark:hover:text-indigo-400 hover:underline transition-colors cursor-pointer"
       >
-        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-          <line x1="16" y1="2" x2="16" y2="6" strokeLinecap="round" />
-          <line x1="8" y1="2" x2="8" y2="6" strokeLinecap="round" />
-          <line x1="3" y1="10" x2="21" y2="10" />
-        </svg>
+        {formatDateSlash(tx.date, intlLocale)}
       </button>
     );
   }
 
   return (
-    <div className="flex items-center gap-1 ml-1" onClick={(e) => e.stopPropagation()}>
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
       <select
         autoFocus
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Escape") cancel(); }}
-        className="border border-green-400 dark:border-green-600 rounded px-1 py-0.5 text-xs bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-green-400 min-w-[90px]"
+        className="border border-indigo-400 dark:border-indigo-600 rounded px-1 py-0.5 text-xs bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-400 min-w-[90px]"
       >
         {options.map((m) => (
           <option key={m} value={m}>{m}</option>
@@ -436,7 +432,7 @@ function InlineMonthEdit({
         onClick={submit}
         disabled={saving}
         title={t("transactions.moveMonthSave")}
-        className="p-0.5 rounded text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 disabled:opacity-40 shrink-0"
+        className="p-0.5 rounded text-indigo-600 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 disabled:opacity-40 shrink-0"
       >
         {saving ? (
           <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
@@ -746,23 +742,18 @@ export default function TransactionsPage() {
       enableSorting: true,
       cell: ({ row, table: tbl }) => {
         const tx = row.original;
-        const isIncome = tx.amount > 0 && !tx.is_reversal;
         const meta = tbl.options.meta as {
           onSave?: (id: string, u: Partial<Transaction>) => void;
           availableMonths?: string[];
         };
         return (
           <div className="flex items-center">
-            <span className="text-gray-400 dark:text-gray-500 whitespace-nowrap text-xs tabular-nums">
-              {formatDate(tx.date, intlLocale)}
-            </span>
-            {isIncome && (
-              <InlineMonthEdit
-                tx={tx}
-                availableMonths={meta.availableMonths ?? []}
-                onSaved={(updated) => meta.onSave?.(tx.id, updated)}
-              />
-            )}
+            <InlineMonthEdit
+              tx={tx}
+              availableMonths={meta.availableMonths ?? []}
+              onSaved={(updated) => meta.onSave?.(tx.id, updated)}
+              intlLocale={intlLocale}
+            />
           </div>
         );
       },

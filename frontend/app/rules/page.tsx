@@ -1013,13 +1013,16 @@ export default function RulesPage() {
     }
   }, []);
 
+  const reloadCleanTotal = useCallback(() => {
+    api.transactions({ uncleaned: true, limit: 1 }).then((d) => setCleanTotal(d.total)).catch(() => {});
+  }, []);
+
   useEffect(() => {
     loadRules();
     loadSuggestions();
     loadStripEntries();
-    // Load uncleaned count for the badge
-    api.transactions({ uncleaned: true, limit: 1 }).then((d) => setCleanTotal(d.total)).catch(() => {});
-  }, [loadRules, loadSuggestions, loadStripEntries]);
+    reloadCleanTotal();
+  }, [loadRules, loadSuggestions, loadStripEntries, reloadCleanTotal]);
 
   // --- Rules panel handlers ---
   function handleRuleSaved(updated: DescriptionRule) {
@@ -1041,6 +1044,7 @@ export default function RulesPage() {
     // reload both panels after apply
     loadRules();
     loadSuggestions();
+    reloadCleanTotal();
     setRecategorizeResult(t("rulesPage.appliedSuccess").replace("{label}", label));
     setTimeout(() => setRecategorizeResult(null), 4000);
   }
@@ -1058,8 +1062,9 @@ export default function RulesPage() {
     const label = toTitleCase(raw);
     try {
       await api.markClean(raw, label);
-      // Reload suggestions — that description now has clean_description set
+      // Reload suggestions and badge — that description now has clean_description set
       loadSuggestions();
+      reloadCleanTotal();
     } catch { /* non-critical */ }
   }
 
@@ -1209,7 +1214,7 @@ export default function RulesPage() {
               )}
             </button>
             <button
-              onClick={() => setTab("clean")}
+              onClick={() => { setTab("clean"); reloadCleanTotal(); }}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 tab === "clean"
                   ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
@@ -1314,7 +1319,7 @@ export default function RulesPage() {
           {/* Clean tab */}
           {tab === "clean" && (
             <CleanTab onCleaned={() => {
-              setCleanTotal((n) => Math.max(0, n - 1));
+              reloadCleanTotal();
               loadSuggestions();
             }} />
           )}
