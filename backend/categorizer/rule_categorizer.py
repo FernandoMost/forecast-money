@@ -1,13 +1,17 @@
 """
 categorizer/rule_categorizer.py
 
-Regex-based categorizer. Rules are loaded from config/category_rules.yaml.
-If the config file is not found, falls back to built-in defaults.
+Regex-based categorizer. Rules are loaded from data/shared.db (category_rules table).
+Falls back to config/category_rules.yaml (legacy) only if the DB has no rules.
 
-Order matters — first match wins.
-No external calls, no IO beyond the initial YAML load, fully deterministic.
+Categorization priority per transaction:
+  1. description_rule.category_id — if the matched description rule has a linked
+     category, that category takes absolute precedence.
+  2. category_rules table — first regex match wins (ordered by position ASC).
+  3. Fallback: ('uncategorized', 'other')
 
-To customize: edit config/category_rules.yaml and run POST /api/v1/recategorize.
+To apply changes: edit via POST /api/v1/category-rules or UI, then
+POST /api/v1/recategorize to re-apply to all stored transactions.
 """
 
 from __future__ import annotations
@@ -17,10 +21,6 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-import yaml
-
-from categorizer.description_cleaner import clean_description as rule_clean
 
 logger = logging.getLogger(__name__)
 
@@ -33,116 +33,114 @@ class CategoryRule:
 
 
 # ---------------------------------------------------------------------------
-# Config loader
+# Module-level rule cache — loaded once at import time, reloaded on demand
 # ---------------------------------------------------------------------------
 
-def _find_config() -> Path | None:
-    """Locate category_rules.yaml by walking up from this file's directory."""
-    candidates = [
-        Path(__file__).parent.parent.parent / "config" / "category_rules.yaml",  # repo root
-        Path(__file__).parent.parent / "config" / "category_rules.yaml",         # backend/
-    ]
-    for p in candidates:
-        if p.exists():
-            return p
-    return None
+_RULES: list[CategoryRule] = []
+_DESC_RULE_CATEGORIES: dict[str, tuple[str, str]] = {}
+# Maps description_rule label → (category, subcategory) for rules with a linked category
 
 
-def _load_rules() -> list[CategoryRule]:
-    config_path = _find_config()
-    if config_path is None:
-        logger.warning("category_rules.yaml not found — using built-in defaults.")
-        return _builtin_rules()
+def _get_shared_store():
+    """Lazy import to avoid circular dependencies at module level."""
+    try:
+        from api.deps import get_settings
+        from db.shared_store import SharedStore
+        settings = get_settings()
+        return SharedStore(settings.shared_db_path)
+    except Exception:
+        return None
+
+
+def _load_rules_from_db() -> tuple[list[CategoryRule], dict[str, tuple[str, str]]]:
+    """
+    Load category_rules from shared.db.
+    Also load description_rule → category associations.
+    Returns (category_rules, desc_rule_categories).
+    """
+    shared = _get_shared_store()
+    if shared is None:
+        logger.warning("SharedStore unavailable — falling back to YAML rules.")
+        return _load_rules_from_yaml(), {}
 
     try:
+        raw_cat_rules = shared.get_all_category_rules()
+        category_rules = []
+        for entry in raw_cat_rules:
+            try:
+                compiled = [re.compile(p, re.IGNORECASE) for p in entry["patterns"]]
+                category_rules.append(CategoryRule(
+                    category=entry["category"],
+                    subcategory=entry["subcategory"] or "other",
+                    patterns=compiled,
+                ))
+            except re.error as exc:
+                logger.error("Invalid pattern in category rule id=%s: %s", entry["id"], exc)
+
+        # Load description_rule → category associations
+        desc_rule_categories: dict[str, tuple[str, str]] = {}
+        for rule in shared.get_all_rules():
+            if rule.get("category_id"):
+                desc_rule_categories[rule["label"]] = (
+                    rule["category_id"],
+                    rule.get("subcategory_id") or "other",
+                )
+
+        logger.debug(
+            "Loaded %d category rules and %d description-rule→category associations from shared.db",
+            len(category_rules), len(desc_rule_categories),
+        )
+        return category_rules, desc_rule_categories
+
+    except Exception as exc:
+        logger.error("Failed to load category rules from DB (%s) — falling back to YAML.", exc)
+        return _load_rules_from_yaml(), {}
+
+
+def _load_rules_from_yaml() -> list[CategoryRule]:
+    """Legacy fallback: load from config/category_rules.yaml."""
+    import yaml
+    candidates = [
+        Path(__file__).parent.parent.parent / "config" / "category_rules.yaml",
+        Path(__file__).parent.parent / "config" / "category_rules.yaml",
+    ]
+    config_path = next((p for p in candidates if p.exists()), None)
+    if config_path is None:
+        logger.warning("category_rules.yaml not found — no category rules loaded.")
+        return []
+    try:
         with config_path.open(encoding="utf-8") as f:
-            raw = yaml.safe_load(f) or []
-        rules = [
-            CategoryRule(
-                category=entry["category"],
-                subcategory=entry["subcategory"],
-                patterns=[re.compile(p, re.IGNORECASE) for p in entry.get("patterns", [])],
-            )
-            for entry in raw
-            if entry.get("category") and entry.get("subcategory")
-        ]
-        logger.debug("Loaded %d category rules from %s", len(rules), config_path)
+            import yaml as _yaml
+            raw = _yaml.safe_load(f) or []
+        rules = []
+        for entry in raw:
+            if not entry.get("category") or not entry.get("subcategory"):
+                continue
+            try:
+                compiled = [re.compile(p, re.IGNORECASE) for p in entry.get("patterns", [])]
+                rules.append(CategoryRule(
+                    category=entry["category"],
+                    subcategory=entry["subcategory"],
+                    patterns=compiled,
+                ))
+            except re.error as exc:
+                logger.error("Invalid YAML pattern: %s", exc)
+        logger.debug("Loaded %d category rules from %s (legacy YAML)", len(rules), config_path)
         return rules
     except Exception as exc:
-        logger.error("Failed to load category_rules.yaml (%s) — using built-in defaults.", exc)
-        return _builtin_rules()
-
-
-def _builtin_rules() -> list[CategoryRule]:
-    """Hardcoded fallback — mirrors the YAML content."""
-    raw: list[tuple[str, str, list[str]]] = [
-        ("income", "payroll",        [r"NOMINA|SALARIO|SUELDO|CONCEPTO\s+Nomina"]),
-        ("income", "transfer_in",    [r"^TRANSFERENCIA DE ", r"^TRANSFERENCIA INMEDIATA DE"]),
-        ("income", "bizum_in",       [r"^BIZUM DE "]),
-        ("income", "refund",         [r"^ANULACION", r"DEVOLUCION|REEMBOLSO|REFUND"]),
-        ("income", "paypal_in",      [r"PAYPAL.*CONCEPTO YYW"]),
-        ("housing", "rent",          [r"ALQUILER|ARRENDAMIENTO|CONCEPTO.*[Aa]lquiler"]),
-        ("housing", "utilities_electricity", [r"ENDESA|IBERDROLA|NATURGY|REPSOL.*LUZ|ELECTRICIDAD|WASABI ENERGIA"]),
-        ("housing", "utilities_water",       [r"VIAQUA|AGUAS|AGUA\b"]),
-        ("housing", "utilities_heating",     [r"AGENCIA VILLAR|CALEFAC"]),
-        ("housing", "internet_phone",        [r"PEPEPHONE|MOVISTAR|VODAFONE|ORANGE|YOIGO|DIGI\b|MASMOVIL"]),
-        ("subscriptions", "streaming",       [r"NETFLIX|SPOTIFY|HBO|DISNEY|PRIME VIDEO|APPLE.*TV|TWITCH"]),
-        ("subscriptions", "gym",             [r"DREAMFIT|GIMNASIO|GYM\b|MCFIT|FITNESS"]),
-        ("subscriptions", "sports_club",     [r"XESTION DE ACTIVIDADES DEPORTIVAS|DEPORTIV"]),
-        ("subscriptions", "paypal_sub",      [r"^RECIBO PayPal"]),
-        ("subscriptions", "pagatelia",       [r"PAGATELIA"]),
-        ("subscriptions", "other_sub",       [r"^RECIBO "]),
-        ("groceries", "supermarket",         [r"LIDL|MERCADONA|CARREFOUR|ALCAMPO|ALDI|DIA\b|AHORRO|MERCAMAS|MERKASIA|MARKET SANTIAGO"]),
-        ("groceries", "other_food_shop",     [r"AUTOSERVICIO|FRUTERIA|VERDULERIA|GRAN BAZAR"]),
-        ("restaurants", "fast_food",         [r"MC DONALDS|MCDONALDS|BURGER KING|BK\d|FIVE GUYS|KFC|POPEYES|KEBAB|GYROS|ROYAL DONNER"]),
-        ("restaurants", "restaurant",        [r"RESTAURANTE|COMPOSTELA H\.|WOK TOWN|SUPERTROPICAL|VIPS|A FUEGO LENTO|SABORES|CAFE BAR|CAFE DALIA|ADELIA|MAMBARA|GINOS|LA MARIPEPA|LOS SECRETOS|LA NEGRA|VERMUTERIA|BAR AQUEVINO|PIK POLLO|COSTA VELLA|GALIA|SOU SHUSHI|SUSHI|PLAZA LENCE|ROYAL KEBAB|ASIAN POCKET|CAFE LA MORENA"]),
-        ("restaurants", "cafe_bakery",       [r"CAFE\b|CAFETERIA|COFFEE|BOANDGO|FORNO|GRANIER|MOLLETE|TOSTA|BAKERY|CHURRERIA"]),
-        ("restaurants", "bar_pub",           [r"PUB\b|BAR\b|CERVECERIA|CANTINA|GALURESA"]),
-        ("transport", "parking",             [r"APARCAMIENTO|PARKING\b|PARKIA"]),
-        ("transport", "fuel",                [r"PETROPRIX|PLENOIL|GASOLINERA|REPSOL.*GASOL|GALURESA|COMBUSTIBLE|CARBURANTE"]),
-        ("transport", "rideshare",           [r"CABIFY|UBER\b|BOLT\b|FREE NOW"]),
-        ("transport", "public_transit",      [r"RENFE|ALSA|AVE\b|BUS\b|METRO\b|CONCELLO DE SAN|TRAM\b"]),
-        ("transport", "train_station",       [r"CHAMARTIN|ATOCHA|ESTACION"]),
-        ("transport", "tyre_service",        [r"NEUMATICOS|RUEDAS"]),
-        ("health", "pharmacy",               [r"FARMACIA"]),
-        ("health", "medical",                [r"CLINICA|MEDICO|DENTISTA|HOSPITAL|CENTRO.*MEDIC"]),
-        ("shopping", "online",               [r"AMAZON|ALIEXPRESS|WALLAPOP|VINTED|DECATHLON.*INTERNET|WWW\."]),
-        ("shopping", "clothing",             [r"VINTED|ZARA\b|HM\b|MANGO\b|PRIMARK|SUPEREGALO|SUPERREGALO|IPO CONCEPT"]),
-        ("shopping", "electronics",          [r"PCCOMPONENTES|MEDIAMARKT|FNAC"]),
-        ("shopping", "general",              [r"PRIMAPRIX|DECATHLON|GRAN BAZAR"]),
-        ("entertainment", "cinema",          [r"CINESA|CINE\b|WWW CINESA|FED.GALLEGA ATL|NYX.*HAPPY"]),
-        ("entertainment", "events",          [r"ENTRADAS|TICKET|EVENTO"]),
-        ("entertainment", "gaming",          [r"STEAM|PLAYSTATION|XBOX|NINTENDO|HAPPYGAMES"]),
-        ("transfers", "rent_contribution",   [r"CONCEPTO.*[Cc]asper"]),
-        ("transfers", "bizum_out",           [r"^BIZUM A FAVOR DE"]),
-        ("transfers", "transfer_out",        [r"^TRANSFERENCIA A FAVOR DE"]),
-        ("cash", "atm_withdrawal",           [r"RETIRADA DE EFECTIVO|CAJERO"]),
-        ("admin", "city_tax",                [r"PAGO RECIBO DE AY\."]),
-        ("admin", "travel_tickets",          [r"BIZUM VENTA BILLETES|COMPRA BIZUM.*BILLETES"]),
-    ]
-    return [
-        CategoryRule(
-            category=cat,
-            subcategory=sub,
-            patterns=[re.compile(p, re.IGNORECASE) for p in pats],
-        )
-        for cat, sub, pats in raw
-    ]
-
-
-# ---------------------------------------------------------------------------
-# Module-level rules — loaded once at import time
-# Reload by calling reload_rules() after editing the YAML.
-# ---------------------------------------------------------------------------
-
-_RULES: list[CategoryRule] = _load_rules()
+        logger.error("Failed to load category_rules.yaml: %s", exc)
+        return []
 
 
 def reload_rules() -> int:
-    """Reload rules from YAML. Returns the number of rules loaded."""
-    global _RULES
-    _RULES = _load_rules()
+    """Reload category rules from shared.db. Returns the number of rules loaded."""
+    global _RULES, _DESC_RULE_CATEGORIES
+    _RULES, _DESC_RULE_CATEGORIES = _load_rules_from_db()
     return len(_RULES)
+
+
+# Trigger initial load
+reload_rules()
 
 
 # ---------------------------------------------------------------------------
@@ -151,8 +149,10 @@ def reload_rules() -> int:
 
 def categorize(description: str) -> tuple[str, str]:
     """
-    Returns (category, subcategory) for a transaction description.
+    Returns (category, subcategory) for a description string.
     Falls back to ('uncategorized', 'other') if no rule matches.
+    This does NOT consider description_rule associations — use categorize_transaction
+    for the full priority chain.
     """
     for rule in _RULES:
         for pattern in rule.patterns:
@@ -162,12 +162,33 @@ def categorize(description: str) -> tuple[str, str]:
 
 
 def categorize_transaction(tx: dict, strip_config: list[dict] | None = None) -> dict:
-    """Returns the transaction dict with category, stripped_description and clean_description filled."""
+    """
+    Returns the transaction dict with category, stripped_description and
+    clean_description filled in.
+
+    Priority:
+      1. If the matched description_rule has category_id set → use that category.
+      2. Evaluate category_rules (regex) in position order → first match wins.
+      3. Fallback: ('uncategorized', 'other')
+    """
     from categorizer.description_cleaner import clean_transaction as _clean_tx
     cleaned = _clean_tx(tx, strip_config=strip_config)
-    # Use stripped_description for category matching if available
+
+    # Priority 1: description_rule has an explicit category association
+    clean_desc = cleaned.get("clean_description")
+    if clean_desc and clean_desc in _DESC_RULE_CATEGORIES:
+        cat, sub = _DESC_RULE_CATEGORIES[clean_desc]
+        return {
+            **cleaned,
+            "category": cat,
+            "subcategory": sub,
+            "category_source": "desc_rule",
+        }
+
+    # Priority 2: category_rules regex matching
     desc_for_cat = cleaned.get("stripped_description") or tx["description"]
     cat, sub = categorize(desc_for_cat)
+
     return {
         **cleaned,
         "category": cat,

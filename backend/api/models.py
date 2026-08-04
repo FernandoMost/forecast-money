@@ -240,6 +240,70 @@ class RecategorizeResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Category rules
+# ---------------------------------------------------------------------------
+
+class CategoryRuleItem(BaseModel):
+    id: int
+    category: str
+    subcategory: str | None
+    patterns: list[str]
+    position: int
+    match_count: int = 0
+    created_at: str | None = None
+
+
+class CategoryRuleListResponse(BaseModel):
+    rules: list[CategoryRuleItem]
+    total: int
+
+
+class CategoryRuleCreateRequest(BaseModel):
+    category: str
+    subcategory: str | None = None
+    patterns: list[str]
+    position: int | None = None
+
+
+class CategoryRuleUpdateRequest(BaseModel):
+    category: str | None = None
+    subcategory: str | None = None
+    patterns: list[str] | None = None
+    position: int | None = None
+
+
+class CategoryRuleDeleteResponse(BaseModel):
+    deleted: bool
+    id: int
+
+
+class CategorySuggestionGroup(BaseModel):
+    clean_description: str
+    count: int
+    latest_date: str | None = None
+
+
+class CategorySuggestionsResponse(BaseModel):
+    groups: list[CategorySuggestionGroup]
+    uncovered_total: int
+
+
+class CategorySuggestionApplyRequest(BaseModel):
+    clean_description: str
+    category: str
+    subcategory: str | None = None
+    create_rule: bool = False  # if True, also create/update a category_rule with the clean_description as pattern
+
+
+class CategorySuggestionDismissRequest(BaseModel):
+    clean_description: str
+
+
+class ApplyCategoryRulesResponse(BaseModel):
+    updated: int
+
+
+# ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
 

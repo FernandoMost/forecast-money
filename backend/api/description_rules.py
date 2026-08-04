@@ -43,6 +43,8 @@ router = APIRouter()
 class DescriptionRule(BaseModel):
     label: str
     patterns: list[str]
+    category_id: str | None = None
+    subcategory_id: str | None = None
     match_count: int = 0
 
 
@@ -55,11 +57,16 @@ class RuleCreateRequest(BaseModel):
     label: str
     patterns: list[str]
     position: int | None = None
+    category_id: str | None = None
+    subcategory_id: str | None = None
 
 
 class RuleUpdateRequest(BaseModel):
     new_label: str | None = None
     patterns: list[str] | None = None
+    category_id: str | None = None
+    subcategory_id: str | None = None
+    clear_category: bool = False  # set True to explicitly remove the category association
 
 
 class RuleDeleteResponse(BaseModel):
@@ -176,6 +183,8 @@ def list_rules(
         DescriptionRule(
             label=entry["label"],
             patterns=entry["patterns"],
+            category_id=entry.get("category_id"),
+            subcategory_id=entry.get("subcategory_id"),
             match_count=counts.get(entry["label"], 0),
         )
         for entry in raw
@@ -196,11 +205,18 @@ def create_rule(
     if not body.patterns:
         raise HTTPException(status_code=422, detail="At least one pattern is required.")
     try:
-        rule = shared.create_rule(body.label, body.patterns, body.position)
+        rule = shared.create_rule(
+            body.label, body.patterns, body.position,
+            category_id=body.category_id, subcategory_id=body.subcategory_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     _reload_all()
-    return DescriptionRule(label=rule["label"], patterns=rule["patterns"], match_count=0)
+    return DescriptionRule(
+        label=rule["label"], patterns=rule["patterns"],
+        category_id=rule.get("category_id"), subcategory_id=rule.get("subcategory_id"),
+        match_count=0,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -217,8 +233,16 @@ def update_rule(
 ):
     if body.patterns is not None and not body.patterns:
         raise HTTPException(status_code=422, detail="At least one pattern is required.")
+
+    from db.shared_store import _UNSET
+    cat_id = None if body.clear_category else (body.category_id if body.category_id is not None else _UNSET)
+    sub_id = None if body.clear_category else (body.subcategory_id if body.subcategory_id is not None else _UNSET)
+
     try:
-        updated = shared.update_rule(label, body.new_label, body.patterns)
+        updated = shared.update_rule(
+            label, body.new_label, body.patterns,
+            category_id=cat_id, subcategory_id=sub_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     if updated is None:
@@ -228,6 +252,8 @@ def update_rule(
     return DescriptionRule(
         label=updated["label"],
         patterns=updated["patterns"],
+        category_id=updated.get("category_id"),
+        subcategory_id=updated.get("subcategory_id"),
         match_count=counts.get(updated["label"], 0),
     )
 

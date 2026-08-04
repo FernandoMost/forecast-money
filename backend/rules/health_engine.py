@@ -595,10 +595,12 @@ class HealthEngine:
     def __init__(
         self,
         current_balance: float | None = None,
-        store=None,  # optional SqliteStore — used to read category roles
+        store=None,   # SqliteStore — for transaction queries
+        shared=None,  # SharedStore — for category role lookups (preferred)
     ):
         self._balance = current_balance
         self._store = store
+        self._shared = shared  # SharedStore takes priority for category roles
 
     def _cats_for_role(self, role: str) -> set[str]:
         """Return category ids that have the given role, falling back to hardcoded defaults.
@@ -607,17 +609,19 @@ class HealthEngine:
         - 'fixed': includes both role='fixed' and role='subscriptions' (recurring costs)
         - 'wants': includes role='wants', role='leisure', and role='subscriptions'
         """
-        if self._store is not None:
+        # Use SharedStore first (categories now live there), fall back to SqliteStore
+        cat_source = self._shared if self._shared is not None else self._store
+        if cat_source is not None:
             try:
                 if role == "fixed":
-                    ids = self._store.get_categories_by_role("fixed") + \
-                          self._store.get_categories_by_role("subscriptions")
+                    ids = cat_source.get_categories_by_role("fixed") + \
+                          cat_source.get_categories_by_role("subscriptions")
                 elif role == "wants":
-                    ids = self._store.get_categories_by_role("wants") + \
-                          self._store.get_categories_by_role("leisure") + \
-                          self._store.get_categories_by_role("subscriptions")
+                    ids = cat_source.get_categories_by_role("wants") + \
+                          cat_source.get_categories_by_role("leisure") + \
+                          cat_source.get_categories_by_role("subscriptions")
                 else:
-                    ids = self._store.get_categories_by_role(role)
+                    ids = cat_source.get_categories_by_role(role)
                 if ids:
                     return set(ids)
             except Exception:

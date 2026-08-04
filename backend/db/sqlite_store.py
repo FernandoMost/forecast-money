@@ -3,91 +3,16 @@ db/sqlite_store.py
 
 Local SQLite persistence layer.
 Stores normalized, categorized transactions and import sessions.
+
+Note: categories are now in data/shared.db (SharedStore), not here.
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 from typing import Any
-
-# Default category taxonomy seeded from config/category_rules.yaml.
-# role values: needs | wants | leisure | fixed | savings | income | other
-_DEFAULT_CATEGORIES: list[dict] = [
-    # Top-level categories
-    {"id": "income",        "name": "Income",        "parent_id": None, "color": "#84cc16", "role": "income",  "position": 0},
-    {"id": "housing",       "name": "Housing",       "parent_id": None, "color": "#6366f1", "role": "fixed",   "position": 1},
-    {"id": "subscriptions", "name": "Subscriptions", "parent_id": None, "color": "#a855f7", "role": "subscriptions", "position": 2},
-    {"id": "groceries",     "name": "Groceries",     "parent_id": None, "color": "#22c55e", "role": "needs",   "position": 3},
-    {"id": "restaurants",   "name": "Restaurants",   "parent_id": None, "color": "#f97316", "role": "leisure", "position": 4},
-    {"id": "transport",     "name": "Transport",     "parent_id": None, "color": "#0ea5e9", "role": "needs",   "position": 5},
-    {"id": "health",        "name": "Health",        "parent_id": None, "color": "#14b8a6", "role": "needs",   "position": 6},
-    {"id": "shopping",      "name": "Shopping",      "parent_id": None, "color": "#ec4899", "role": "wants",   "position": 7},
-    {"id": "entertainment", "name": "Entertainment", "parent_id": None, "color": "#eab308", "role": "leisure", "position": 8},
-    {"id": "transfers",     "name": "Transfers",     "parent_id": None, "color": "#94a3b8", "role": "other",   "position": 9},
-    {"id": "cash",          "name": "Cash",          "parent_id": None, "color": "#78716c", "role": "other",   "position": 10},
-    {"id": "admin",         "name": "Admin",         "parent_id": None, "color": "#64748b", "role": "needs",   "position": 11},
-    {"id": "uncategorized", "name": "Uncategorized", "parent_id": None, "color": "#d1d5db", "role": "other",   "position": 12},
-    # Subcategories — income
-    {"id": "payroll",               "name": "Payroll",          "parent_id": "income",        "color": None, "role": None, "position": 0},
-    {"id": "transfer_in",           "name": "Transfer in",      "parent_id": "income",        "color": None, "role": None, "position": 1},
-    {"id": "bizum_in",              "name": "Bizum in",         "parent_id": "income",        "color": None, "role": None, "position": 2},
-    {"id": "refund",                "name": "Refund",           "parent_id": "income",        "color": None, "role": None, "position": 3},
-    {"id": "paypal_in",             "name": "PayPal in",        "parent_id": "income",        "color": None, "role": None, "position": 4},
-    # Subcategories — housing
-    {"id": "rent",                  "name": "Rent",             "parent_id": "housing",       "color": None, "role": None, "position": 0},
-    {"id": "utilities_electricity", "name": "Electricity",      "parent_id": "housing",       "color": None, "role": None, "position": 1},
-    {"id": "utilities_water",       "name": "Water",            "parent_id": "housing",       "color": None, "role": None, "position": 2},
-    {"id": "utilities_heating",     "name": "Heating",          "parent_id": "housing",       "color": None, "role": None, "position": 3},
-    {"id": "internet_phone",        "name": "Internet / Phone", "parent_id": "housing",       "color": None, "role": None, "position": 4},
-    # Subcategories — subscriptions
-    {"id": "streaming",             "name": "Streaming",        "parent_id": "subscriptions", "color": None, "role": None, "position": 0},
-    {"id": "gym",                   "name": "Gym",              "parent_id": "subscriptions", "color": None, "role": None, "position": 1},
-    {"id": "sports_club",           "name": "Sports club",      "parent_id": "subscriptions", "color": None, "role": None, "position": 2},
-    {"id": "paypal_sub",            "name": "PayPal sub",       "parent_id": "subscriptions", "color": None, "role": None, "position": 3},
-    {"id": "pagatelia",             "name": "Pagatelia",        "parent_id": "subscriptions", "color": None, "role": None, "position": 4},
-    {"id": "other_sub",             "name": "Other sub",        "parent_id": "subscriptions", "color": None, "role": None, "position": 5},
-    # Subcategories — groceries
-    {"id": "supermarket",           "name": "Supermarket",      "parent_id": "groceries",     "color": None, "role": None, "position": 0},
-    {"id": "other_food_shop",       "name": "Other food shop",  "parent_id": "groceries",     "color": None, "role": None, "position": 1},
-    # Subcategories — restaurants
-    {"id": "fast_food",             "name": "Fast food",        "parent_id": "restaurants",   "color": None, "role": None, "position": 0},
-    {"id": "restaurant",            "name": "Restaurant",       "parent_id": "restaurants",   "color": None, "role": None, "position": 1},
-    {"id": "cafe_bakery",           "name": "Café / Bakery",    "parent_id": "restaurants",   "color": None, "role": None, "position": 2},
-    {"id": "bar_pub",               "name": "Bar / Pub",        "parent_id": "restaurants",   "color": None, "role": None, "position": 3},
-    # Subcategories — transport
-    {"id": "parking",               "name": "Parking",          "parent_id": "transport",     "color": None, "role": None, "position": 0},
-    {"id": "fuel",                  "name": "Fuel",             "parent_id": "transport",     "color": None, "role": None, "position": 1},
-    {"id": "rideshare",             "name": "Rideshare",        "parent_id": "transport",     "color": None, "role": None, "position": 2},
-    {"id": "public_transit",        "name": "Public transit",   "parent_id": "transport",     "color": None, "role": None, "position": 3},
-    {"id": "train_station",         "name": "Train",            "parent_id": "transport",     "color": None, "role": None, "position": 4},
-    {"id": "tyre_service",          "name": "Tyres",            "parent_id": "transport",     "color": None, "role": None, "position": 5},
-    # Subcategories — health
-    {"id": "pharmacy",              "name": "Pharmacy",         "parent_id": "health",        "color": None, "role": None, "position": 0},
-    {"id": "medical",               "name": "Medical",          "parent_id": "health",        "color": None, "role": None, "position": 1},
-    # Subcategories — shopping
-    {"id": "online",                "name": "Online",           "parent_id": "shopping",      "color": None, "role": None, "position": 0},
-    {"id": "clothing",              "name": "Clothing",         "parent_id": "shopping",      "color": None, "role": None, "position": 1},
-    {"id": "electronics",           "name": "Electronics",      "parent_id": "shopping",      "color": None, "role": None, "position": 2},
-    {"id": "general",               "name": "General",          "parent_id": "shopping",      "color": None, "role": None, "position": 3},
-    # Subcategories — entertainment
-    {"id": "cinema",                "name": "Cinema",           "parent_id": "entertainment", "color": None, "role": None, "position": 0},
-    {"id": "events",                "name": "Events",           "parent_id": "entertainment", "color": None, "role": None, "position": 1},
-    {"id": "gaming",                "name": "Gaming",           "parent_id": "entertainment", "color": None, "role": None, "position": 2},
-    # Subcategories — transfers
-    {"id": "rent_contribution",     "name": "Rent contribution","parent_id": "transfers",     "color": None, "role": None, "position": 0},
-    {"id": "bizum_out",             "name": "Bizum out",        "parent_id": "transfers",     "color": None, "role": None, "position": 1},
-    {"id": "transfer_out",          "name": "Transfer out",     "parent_id": "transfers",     "color": None, "role": None, "position": 2},
-    # Subcategories — cash
-    {"id": "atm_withdrawal",        "name": "ATM withdrawal",   "parent_id": "cash",          "color": None, "role": None, "position": 0},
-    # Subcategories — admin
-    {"id": "city_tax",              "name": "City tax",         "parent_id": "admin",         "color": None, "role": None, "position": 0},
-    {"id": "travel_tickets",        "name": "Travel tickets",   "parent_id": "admin",         "color": None, "role": None, "position": 1},
-    # Subcategories — uncategorized
-    {"id": "other",                 "name": "Other",            "parent_id": "uncategorized", "color": None, "role": None, "position": 0},
-]
 
 
 class SqliteStore:
@@ -138,16 +63,6 @@ class SqliteStore:
                     raw_json                 TEXT  -- full normalized dict for future schema changes
                 );
 
-                CREATE TABLE IF NOT EXISTS categories (
-                    id         TEXT PRIMARY KEY,
-                    name       TEXT NOT NULL,
-                    parent_id  TEXT REFERENCES categories(id),
-                    color      TEXT,
-                    role       TEXT,
-                    position   INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-                );
-
                 CREATE TABLE IF NOT EXISTS health_score_history (
                     id          TEXT PRIMARY KEY,
                     recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -175,11 +90,9 @@ class SqliteStore:
                 CREATE INDEX IF NOT EXISTS idx_tx_date     ON transactions(date);
                 CREATE INDEX IF NOT EXISTS idx_tx_category ON transactions(category);
                 CREATE INDEX IF NOT EXISTS idx_tx_bank     ON transactions(bank_id);
-                CREATE INDEX IF NOT EXISTS idx_cat_parent  ON categories(parent_id);
                 CREATE INDEX IF NOT EXISTS idx_hsh_date    ON health_score_history(recorded_at);
             """)
         self._migrate_schema()
-        self._seed_categories()
 
     def _migrate_schema(self) -> None:
         """Apply incremental schema changes to existing databases."""
@@ -237,145 +150,6 @@ class SqliteStore:
                 "rule_scores": json.loads(r[5]) if r[5] else {},
             })
         return result
-
-    # ------------------------------------------------------------------
-    # ------------------------------------------------------------------
-    # Categories — seed
-    # ------------------------------------------------------------------
-
-    def _seed_categories(self) -> None:
-        """Populate the categories table from _DEFAULT_CATEGORIES if it is empty."""
-        with self._connect() as conn:
-            count = conn.execute("SELECT COUNT(*) FROM categories").fetchone()[0]
-            if count > 0:
-                return
-            conn.executemany(
-                """INSERT OR IGNORE INTO categories (id, name, parent_id, color, role, position)
-                   VALUES (:id, :name, :parent_id, :color, :role, :position)""",
-                _DEFAULT_CATEGORIES,
-            )
-
-    # ------------------------------------------------------------------
-    # Categories — read
-    # ------------------------------------------------------------------
-
-    def get_categories(self) -> list[dict]:
-        """
-        Returns the full category tree as a flat list of dicts.
-        Each dict has: id, name, parent_id, color, role, position, created_at.
-        """
-        with self._connect() as conn:
-            rows = conn.execute(
-                """SELECT id, name, parent_id, color, role, position, created_at
-                   FROM categories
-                   ORDER BY CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END, position, id"""
-            ).fetchall()
-        cols = ["id", "name", "parent_id", "color", "role", "position", "created_at"]
-        return [dict(zip(cols, r)) for r in rows]
-
-    def get_categories_by_role(self, role: str) -> list[str]:
-        """Returns top-level category ids with a given role (for health engine)."""
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT id FROM categories WHERE parent_id IS NULL AND role = ?",
-                (role,),
-            ).fetchall()
-        return [r[0] for r in rows]
-
-    def get_category_by_id(self, cat_id: str) -> dict | None:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT id, name, parent_id, color, role, position, created_at FROM categories WHERE id = ?",
-                (cat_id,),
-            ).fetchone()
-        if not row:
-            return None
-        return dict(zip(["id", "name", "parent_id", "color", "role", "position", "created_at"], row))
-
-    # ------------------------------------------------------------------
-    # Categories — write
-    # ------------------------------------------------------------------
-
-    def create_category(
-        self,
-        cat_id: str,
-        name: str,
-        parent_id: str | None = None,
-        color: str | None = None,
-        role: str | None = None,
-        position: int = 0,
-    ) -> dict:
-        """Insert a new category. Raises ValueError if id already exists."""
-        with self._connect() as conn:
-            existing = conn.execute(
-                "SELECT id FROM categories WHERE id = ?", (cat_id,)
-            ).fetchone()
-            if existing:
-                raise ValueError(f"Category id '{cat_id}' already exists.")
-            conn.execute(
-                """INSERT INTO categories (id, name, parent_id, color, role, position)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (cat_id, name, parent_id, color, role, position),
-            )
-        return self.get_category_by_id(cat_id)
-
-    def update_category(
-        self,
-        cat_id: str,
-        name: str | None = None,
-        color: str | None = None,
-        role: str | None = None,
-        position: int | None = None,
-    ) -> dict | None:
-        """Partial update of a category. Returns the updated dict or None if not found."""
-        cat = self.get_category_by_id(cat_id)
-        if not cat:
-            return None
-        new_name = name if name is not None else cat["name"]
-        new_color = color if color is not None else cat["color"]
-        new_role = role if role is not None else cat["role"]
-        new_position = position if position is not None else cat["position"]
-        with self._connect() as conn:
-            conn.execute(
-                """UPDATE categories SET name=?, color=?, role=?, position=? WHERE id=?""",
-                (new_name, new_color, new_role, new_position, cat_id),
-            )
-        return self.get_category_by_id(cat_id)
-
-    def delete_category(self, cat_id: str) -> dict:
-        """
-        Delete a category and all its subcategories.
-        Transactions referencing deleted categories are set to NULL.
-        Returns counts of deleted categories and affected transactions.
-        """
-        with self._connect() as conn:
-            # Collect all ids to delete (the category itself + its children)
-            child_ids = [
-                r[0] for r in conn.execute(
-                    "SELECT id FROM categories WHERE parent_id = ?", (cat_id,)
-                ).fetchall()
-            ]
-            all_ids = [cat_id] + child_ids
-
-            # Null out transactions for all affected category ids
-            affected = 0
-            for cid in all_ids:
-                r = conn.execute(
-                    "UPDATE transactions SET category = NULL, subcategory = NULL, category_source = NULL "
-                    "WHERE category = ? OR subcategory = ?",
-                    (cid, cid),
-                )
-                affected += r.rowcount
-
-            # Delete subcategories first (FK children), then parent
-            for cid in child_ids:
-                conn.execute("DELETE FROM categories WHERE id = ?", (cid,))
-            conn.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
-
-        return {
-            "deleted_categories": len(all_ids),
-            "affected_transactions": affected,
-        }
 
     # ------------------------------------------------------------------
     # Imports
@@ -742,7 +516,7 @@ class SqliteStore:
             return {"balance": round(row[0], 2), "date": row[1]}
         return {"balance": None, "date": None}
 
-    def get_dashboard_month_summary(self, month: str) -> dict:
+    def get_dashboard_month_summary(self, month: str, leisure_category_ids: list[str] | None = None) -> dict:
         """
         Extended monthly summary for the dashboard.
         Adds: days_of_data (days between first and last tx in the month),
@@ -771,16 +545,21 @@ class SqliteStore:
                 LIMIT 1
             """, (month,)).fetchone()
 
-            # Leisure = all categories with role='leisure'
-            leisure_row = conn.execute("""
-                SELECT COALESCE(SUM(ABS(t.amount)), 0)
-                FROM transactions t
-                JOIN categories c ON t.category = c.id
-                WHERE t.month = ? AND t.is_reversal = 0
-                  AND t.amount < 0
-                  AND c.role = 'leisure'
-                  AND c.parent_id IS NULL
-            """, (month,)).fetchone()
+            # Leisure = categories passed in (from shared.db role='leisure')
+            if leisure_category_ids:
+                placeholders = ",".join("?" * len(leisure_category_ids))
+                leisure_row = conn.execute(
+                    f"""SELECT COALESCE(SUM(ABS(t.amount)), 0)
+                        FROM transactions t
+                        WHERE t.month = ? AND t.is_reversal = 0
+                          AND t.amount < 0
+                          AND t.category IN ({placeholders})""",
+                    [month] + list(leisure_category_ids),
+                ).fetchone()
+            else:
+                leisure_row = conn.execute(
+                    "SELECT 0.0"
+                ).fetchone()
 
             by_category = conn.execute("""
                 SELECT category, SUM(amount) as total, COUNT(*) as count
@@ -825,6 +604,47 @@ class SqliteStore:
                 for r in by_category
             ],
         }
+
+    def get_uncategorized_by_clean_description(self) -> list[dict]:
+        """
+        Returns groups of transactions that have a clean_description but are uncategorized
+        (category IS NULL or category = 'uncategorized'), grouped by clean_description.
+        Each entry: clean_description, count, latest_date.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT clean_description, COUNT(*) as c, MAX(date) as latest
+                   FROM transactions
+                   WHERE clean_description IS NOT NULL
+                     AND (category IS NULL OR category = 'uncategorized')
+                   GROUP BY clean_description
+                   ORDER BY c DESC, latest DESC"""
+            ).fetchall()
+        return [
+            {"clean_description": r[0], "count": r[1], "latest_date": r[2]}
+            for r in rows
+        ]
+
+    def bulk_set_category_for_clean_description(
+        self, clean_description: str, category: str, subcategory: str | None
+    ) -> int:
+        """
+        Set category + subcategory + category_source='rule' for all transactions
+        matching clean_description that are uncategorized (not manually set).
+        Returns the number of rows updated.
+        """
+        with self._connect() as conn:
+            result = conn.execute(
+                """UPDATE transactions
+                   SET category        = ?,
+                       subcategory     = ?,
+                       category_source = 'rule'
+                   WHERE clean_description = ?
+                     AND category_source != 'manual'
+                     AND (category IS NULL OR category = 'uncategorized')""",
+                (category, subcategory, clean_description),
+            )
+        return result.rowcount
 
     def clear_all(self) -> dict:
         """Deletes all transactions and imports. Returns counts of deleted rows."""

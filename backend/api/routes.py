@@ -53,11 +53,12 @@ from api.models import (
     TransactionList,
     UploadResponse,
 )
-from api.deps import get_store, get_settings, get_current_user
+from api.deps import get_store, get_settings, get_shared_store, get_current_user
 from categorizer.ai_categorizer import AiCategorizer
 from categorizer.rule_categorizer import categorize_transaction, reload_rules as reload_category_rules
 from categorizer.description_cleaner import reload_rules as reload_clean_rules
 from db.sqlite_store import SqliteStore
+from db.shared_store import SharedStore
 from parser.bank_parser import BankParser
 from parser.normalizer import normalize
 from rules.health_engine import HealthEngine
@@ -76,6 +77,7 @@ async def upload_statement(
     use_ai: bool = Form(default=False, description="Use Ollama AI categorizer"),
     settings=Depends(get_settings),
     store: SqliteStore = Depends(get_store),
+    shared: SharedStore = Depends(get_shared_store),
 ):
     fname = file.filename or ""
     if not fname.endswith((".xlsx", ".csv")):
@@ -128,7 +130,7 @@ async def upload_statement(
                 all_txs_for_health = store.get_all_transactions_for_rules()
                 sorted_h = sorted(all_txs_for_health, key=lambda t: t["date"], reverse=True)
                 h_balance = sorted_h[0].get("balance") if sorted_h else None
-                h_engine = HealthEngine(current_balance=h_balance, store=store)
+                h_engine = HealthEngine(current_balance=h_balance, store=store, shared=shared)
                 h_report = h_engine.analyze(all_txs_for_health)
                 store.save_health_score(
                     import_id=import_id,
@@ -223,14 +225,13 @@ def _build_month_summary(raw: dict, today: _date) -> MonthSummaryForDashboard:
 
 
 @router.get("/dashboard", response_model=DashboardResponse, summary="Dashboard snapshot")
-def get_dashboard(store: SqliteStore = Depends(get_store)):
+def get_dashboard(
+    store: SqliteStore = Depends(get_store),
+    shared: SharedStore = Depends(get_shared_store),
+):
     """
     Single endpoint for the dashboard page.
     Returns health score + enriched monthly summaries + staleness info.
-
-    Primary/secondary month logic:
-      - If the current calendar month has ≥15 days of transaction data → primary = current month
-      - Otherwise → primary = last full month, secondary = current partial month
     """
     all_txs = store.get_all_transactions_for_rules()
     if not all_txs:
@@ -239,7 +240,7 @@ def get_dashboard(store: SqliteStore = Depends(get_store)):
     # --- Health score ---
     sorted_txs = sorted(all_txs, key=lambda t: t["date"], reverse=True)
     latest_balance = sorted_txs[0].get("balance")
-    engine = HealthEngine(current_balance=latest_balance, store=store)
+    engine = HealthEngine(current_balance=latest_balance, store=store, shared=shared)
     health = engine.analyze(all_txs)
     health_response = HealthScoreResponse(
         overall_score=health.overall_score,
@@ -266,22 +267,25 @@ def get_dashboard(store: SqliteStore = Depends(get_store)):
         days_since = (today - last_tx_date).days
 
     # --- Available months ---
-    available_months = store.get_available_months()   # DESC order
+    available_months = store.get_available_months()
     current_month_str = today.strftime("%Y-%m")
+
+    # --- Leisure category ids ---
+    leisure_ids = shared.get_categories_by_role("leisure")
 
     # --- Current month data (may be empty) ---
     current_raw = (
-        store.get_dashboard_month_summary(current_month_str)
+        store.get_dashboard_month_summary(current_month_str, leisure_category_ids=leisure_ids)
         if current_month_str in available_months
         else None
     )
 
-    # --- Last full month (most recent month that is not the current calendar month) ---
+    # --- Last full month ---
     last_full_month_str = next(
         (m for m in available_months if m != current_month_str), None
     )
     last_full_raw = (
-        store.get_dashboard_month_summary(last_full_month_str)
+        store.get_dashboard_month_summary(last_full_month_str, leisure_category_ids=leisure_ids)
         if last_full_month_str
         else None
     )
@@ -435,12 +439,11 @@ def patch_transaction(
 # ---------------------------------------------------------------------------
 
 @router.get("/categories", response_model=CategoryListResponse, summary="List category tree")
-def list_categories(store: SqliteStore = Depends(get_store)):
+def list_categories(shared: SharedStore = Depends(get_shared_store)):
     """
     Returns the full category tree: top-level categories with their subcategories nested.
     """
-    flat = store.get_categories()
-    # Build tree: top-level first, then attach children
+    flat = shared.get_categories()
     top_level = [c for c in flat if c["parent_id"] is None]
     children_by_parent: dict[str, list[dict]] = {}
     for c in flat:
@@ -470,22 +473,21 @@ def list_categories(store: SqliteStore = Depends(get_store)):
 @router.post("/categories", response_model=CategoryItem, status_code=201, summary="Create a category or subcategory")
 def create_category(
     body: CategoryCreateRequest,
-    store: SqliteStore = Depends(get_store),
+    shared: SharedStore = Depends(get_shared_store),
 ):
     """
     Create a new top-level category (parent_id=null) or subcategory (parent_id=existing category id).
     The id must be a unique slug (e.g. 'transport', 'fuel').
     """
-    # Validate parent exists if provided
     if body.parent_id is not None:
-        parent = store.get_category_by_id(body.parent_id)
+        parent = shared.get_category_by_id(body.parent_id)
         if not parent:
             raise HTTPException(status_code=404, detail=f"Parent category '{body.parent_id}' not found.")
         if parent["parent_id"] is not None:
             raise HTTPException(status_code=400, detail="Subcategories cannot have subcategories (max depth: 2).")
 
     try:
-        cat = store.create_category(
+        cat = shared.create_category(
             cat_id=body.id,
             name=body.name,
             parent_id=body.parent_id,
@@ -507,13 +509,13 @@ def create_category(
 def patch_category(
     cat_id: str,
     body: CategoryUpdateRequest,
-    store: SqliteStore = Depends(get_store),
+    shared: SharedStore = Depends(get_shared_store),
 ):
     """
     Update name, color, role, and/or position of an existing category.
     Only the provided fields are changed.
     """
-    updated = store.update_category(
+    updated = shared.update_category(
         cat_id=cat_id,
         name=body.name,
         color=body.color,
@@ -533,18 +535,35 @@ def patch_category(
 def delete_category(
     cat_id: str,
     store: SqliteStore = Depends(get_store),
+    shared: SharedStore = Depends(get_shared_store),
 ):
     """
     Delete a category (and its subcategories).
     Transactions referencing the deleted category/subcategories will have their
     category and subcategory set to NULL.
     """
-    existing = store.get_category_by_id(cat_id)
+    existing = shared.get_category_by_id(cat_id)
     if not existing:
         raise HTTPException(status_code=404, detail=f"Category '{cat_id}' not found.")
 
-    result = store.delete_category(cat_id)
-    return CategoryDeleteResponse(**result)
+    result = shared.delete_category(cat_id)
+    deleted_ids = result["deleted_ids"]
+
+    # Null out transactions for all deleted category ids
+    affected = 0
+    with store._connect() as conn:
+        for cid in deleted_ids:
+            r = conn.execute(
+                "UPDATE transactions SET category = NULL, subcategory = NULL, category_source = NULL "
+                "WHERE category = ? OR subcategory = ?",
+                (cid, cid),
+            )
+            affected += r.rowcount
+
+    return CategoryDeleteResponse(
+        deleted_categories=result["deleted_categories"],
+        affected_transactions=affected,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -554,19 +573,19 @@ def delete_category(
 @router.get("/health-score", response_model=HealthScoreResponse, summary="Financial health score (0-100)")
 def get_health_score(
     store: SqliteStore = Depends(get_store),
+    shared: SharedStore = Depends(get_shared_store),
 ):
     """Runs all 7 financial health rules against stored transactions and returns a score + alerts."""
     all_txs = store.get_all_transactions_for_rules()
     if not all_txs:
         raise HTTPException(status_code=404, detail="No transactions found. Upload a statement first.")
 
-    # Get latest known balance from most recent transaction
     latest_balance = None
     if all_txs:
         sorted_txs = sorted(all_txs, key=lambda t: t["date"], reverse=True)
         latest_balance = sorted_txs[0].get("balance")
 
-    engine = HealthEngine(current_balance=latest_balance, store=store)
+    engine = HealthEngine(current_balance=latest_balance, store=store, shared=shared)
     health = engine.analyze(all_txs)
 
     return HealthScoreResponse(
@@ -658,11 +677,9 @@ def recategorize(
     store: SqliteStore = Depends(get_store),
 ):
     """
-    Reloads rules from YAML config files and re-applies them to every stored transaction.
-    Useful after editing category_rules.yaml or clean_description_rules.yaml.
+    Reloads rules from shared.db and re-applies them to every stored transaction.
     Pass use_ai=true to also run Ollama for unmatched descriptions.
     """
-    # Reload rules from disk so edits take effect without restarting the server
     reload_category_rules()
     reload_clean_rules()
 
