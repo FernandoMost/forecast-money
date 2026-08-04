@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { formatDate, formatDateSlash, formatEur } from "@/lib/utils";
+import { useCategoryTree } from "@/components/CategoryTree";
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -222,16 +223,24 @@ function RuleRow({
   onDeleted: (label: string) => void;
 }) {
   const { t } = useT();
+  const { categories } = useCategoryTree();
+  const topLevel = categories;
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [label, setLabel] = useState(rule.label);
   const [patterns, setPatterns] = useState<string[]>(rule.patterns);
+  const [categoryId, setCategoryId] = useState<string>(rule.category_id ?? "");
+  const [subcategoryId, setSubcategoryId] = useState<string>(rule.subcategory_id ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const subcats = categories.find((c) => c.id === categoryId)?.subcategories ?? [];
 
   function cancel() {
     setLabel(rule.label);
     setPatterns(rule.patterns);
+    setCategoryId(rule.category_id ?? "");
+    setSubcategoryId(rule.subcategory_id ?? "");
     setEditing(false);
     setError(null);
   }
@@ -247,6 +256,9 @@ function RuleRow({
       const updated = await api.updateDescriptionRule(rule.label, {
         new_label: label !== rule.label ? label : undefined,
         patterns,
+        category_id: categoryId || null,
+        subcategory_id: subcategoryId || null,
+        clear_category: !categoryId,
       });
       onSaved(updated);
       setEditing(false);
@@ -286,6 +298,14 @@ function RuleRow({
               <PatternTag key={i} value={p} />
             ))}
           </div>
+          {rule.category_id && (
+            <span className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded-full shrink-0 font-medium">
+              {categories.find((c) => c.id === rule.category_id)?.name ?? rule.category_id}
+              {rule.subcategory_id && (
+                <span className="opacity-60"> / {categories.find((c) => c.id === rule.subcategory_id)?.name ?? rule.subcategory_id}</span>
+              )}
+            </span>
+          )}
           <div
             className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
             onClick={(e) => e.stopPropagation()}
@@ -327,6 +347,33 @@ function RuleRow({
             <p className="text-xs text-gray-400 mt-1">{t("rulesPage.patternHint")}</p>
           </div>
         </div>
+        {/* Category association */}
+        <div className="flex gap-2 items-start">
+          <label className="text-xs text-gray-500 w-16 shrink-0 pt-1.5">{t("categoryRules.associateCategory")}</label>
+          <div className="flex gap-2 flex-1">
+            <select
+              className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white flex-1"
+              value={categoryId}
+              onChange={(e) => { setCategoryId(e.target.value); setSubcategoryId(""); }}
+            >
+              <option value="">— {t("categoryRules.noAssociation")} —</option>
+              {topLevel.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {categoryId && subcats.length > 0 && (
+              <select
+                className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white flex-1"
+                value={subcategoryId}
+                onChange={(e) => setSubcategoryId(e.target.value)}
+              >
+                <option value="">—</option>
+                {subcats.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            )}
+          </div>
+        </div>
+        {categoryId && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 pl-18">{t("categoryRules.associateCategoryHint")}</p>
+        )}
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="flex gap-2 justify-end">
           <button

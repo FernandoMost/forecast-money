@@ -325,6 +325,8 @@ export interface HealthScoreHistoryResponse {
 export interface DescriptionRule {
   label: string;
   patterns: string[];
+  category_id: string | null;
+  subcategory_id: string | null;
   match_count: number;
 }
 
@@ -379,6 +381,52 @@ export interface StripSuggestion {
 
 export interface StripSuggestionsResponse {
   suggestions: StripSuggestion[];
+}
+
+// --- Category Rules types ---
+
+export interface CategoryRuleItem {
+  id: number;
+  category: string;
+  subcategory: string | null;
+  patterns: string[];
+  position: number;
+  match_count: number;
+  created_at: string | null;
+}
+
+export interface CategoryRuleListResponse {
+  rules: CategoryRuleItem[];
+  total: number;
+}
+
+export interface CategoryRuleCreateRequest {
+  category: string;
+  subcategory?: string | null;
+  patterns: string[];
+  position?: number | null;
+}
+
+export interface CategoryRuleUpdateRequest {
+  category?: string | null;
+  subcategory?: string | null;
+  patterns?: string[] | null;
+  position?: number | null;
+}
+
+export interface CategorySuggestionGroup {
+  clean_description: string;
+  count: number;
+  latest_date: string | null;
+}
+
+export interface CategorySuggestionsResponse {
+  groups: CategorySuggestionGroup[];
+  uncovered_total: number;
+}
+
+export interface ApplyCategoryRulesResponse {
+  updated: number;
 }
 
 // --- Imports types ---
@@ -487,7 +535,7 @@ export const api = {
   descriptionRules: () => get<RuleListResponse>("/description-rules"),
   createDescriptionRule: (label: string, patterns: string[], position?: number) =>
     postJson<DescriptionRule>("/description-rules", { label, patterns, position }),
-  updateDescriptionRule: (label: string, data: { new_label?: string; patterns?: string[] }) =>
+  updateDescriptionRule: (label: string, data: { new_label?: string; patterns?: string[]; category_id?: string | null; subcategory_id?: string | null; clear_category?: boolean }) =>
     putJson<DescriptionRule>(`/description-rules/${encodeURIComponent(label)}`, data),
   deleteDescriptionRule: (label: string) =>
     del<{ deleted: boolean; label: string }>(`/description-rules/${encodeURIComponent(label)}`),
@@ -508,4 +556,27 @@ export const api = {
     del<{ deleted: boolean; id: number }>(`/description-strip-config/${id}`),
   stripSuggestions: () =>
     get<StripSuggestionsResponse>("/description-strip-suggestions"),
+
+  // Category Rules CRUD
+  categoryRules: () => get<CategoryRuleListResponse>("/category-rules"),
+  createCategoryRule: (data: CategoryRuleCreateRequest) =>
+    postJson<CategoryRuleItem>("/category-rules", data),
+  updateCategoryRule: (id: number, data: CategoryRuleUpdateRequest) =>
+    putJson<CategoryRuleItem>(`/category-rules/${id}`, data),
+  deleteCategoryRule: (id: number) =>
+    del<{ deleted: boolean; id: number }>(`/category-rules/${id}`),
+  applyCategoryRules: () =>
+    postJson<ApplyCategoryRulesResponse>("/category-rules/apply", {}),
+
+  // Category Suggestions
+  categorySuggestions: (limit = 100) =>
+    get<CategorySuggestionsResponse>(`/category-suggestions?limit=${limit}`),
+  dismissCategorySuggestion: (clean_description: string) =>
+    postJson<void>("/category-suggestions/dismiss", { clean_description }),
+  applyCategorySuggestion: (data: {
+    clean_description: string;
+    category: string;
+    subcategory?: string | null;
+    create_rule?: boolean;
+  }) => postJson<{ updated: number; rule_id: number | null }>("/category-suggestions/apply", data),
 };
