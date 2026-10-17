@@ -14,7 +14,7 @@
 | `/trends` | `app/trends/page.tsx` | Trends view |
 | `/upload` | `app/upload/page.tsx` | Statement upload |
 | `/health` | `app/health/page.tsx` | Financial health score |
-| `/categories` | `app/categories/page.tsx` | Category CRUD |
+| `/categories` | `app/categories/page.tsx` | Tabs: categories CRUD, category rules, category suggestions |
 | `/rules` | `app/rules/page.tsx` | Description rules + suggestion/clean/strip tabs |
 | `/login` | `app/login/page.tsx` | Auth |
 
@@ -27,7 +27,7 @@
 | `lib/theme.tsx` | `useTheme()` → `{ isDark, toggleTheme }` |
 | `lib/translateRule.ts` | Translates health rule IDs into localised strings |
 | `components/Nav.tsx` | Top navigation bar |
-| `components/CategoryTree.tsx` | Category+subcategory pill selector; exports `CATEGORY_TREE`, `catLabel()`, `subLabel()` |
+| `components/CategoryTree.tsx` | Category+subcategory pill selector; taxonomy fetched from `/categories` API; exports `CATEGORY_TREE`, `catLabel()`, `subLabel()`, `invalidateCategoryCache()` |
 | `components/Providers.tsx` | Wraps app with i18n + theme providers |
 | `messages/es.json` | Spanish strings |
 | `messages/en.json` | English strings |
@@ -52,6 +52,13 @@ api.descriptionSuggestions(limit?)   // SuggestionGroup now includes latest_date
 api.applyDescriptionRules(rules[])
 api.dismissSuggestion(canonical)
 api.markClean(raw, label)
+// Categories + category rules + suggestions
+api.categories() / createCategory(data) / updateCategory(id, data) / deleteCategory(id)
+api.categoryRules() / createCategoryRule(data) / updateCategoryRule(id, data) / deleteCategoryRule(id) / applyCategoryRules()
+api.categorySuggestions(limit?) / dismissCategorySuggestion(desc) / applyCategorySuggestion({ clean_description, category, subcategory?, create_rule? })
+// Strip config + imports
+api.stripConfig() / addStripEntry(type, value) / deleteStripEntry(id) / stripSuggestions()
+api.listImports() / deleteImport(id) / clearAllData()
 ```
 
 `TransactionList`: `{ total, amount_total, limit, offset, items[] }` — `total`/`amount_total` are full unpaginated counts.
@@ -94,7 +101,7 @@ Never render raw `YYYY-MM-DD` or `YYYY-MM` strings.
 <CategoryTree selected={{ category, subcategory }} onChange={fn} showAll />  // filter mode
 <CategoryTree selected={{ category, subcategory }} onChange={fn} />           // edit mode
 ```
-Taxonomy in `CATEGORY_TREE` must stay in sync with `config/category_rules.yaml`.
+Taxonomy comes from `GET /categories` (module-level cache, one fetch per session, hardcoded fallback tree). Call `invalidateCategoryCache()` after any category CRUD.
 
 ## Invariants
 - No calculations in the frontend — totals/projections come from the backend

@@ -60,12 +60,13 @@ docker-compose up
 ## Features
 
 - **Config-driven bank parser** — add any bank by writing a YAML file, no code changes
-- **Rule-based categorization** — hot-reloaded YAML rules
+- **Rule-based categorization** — rules stored in a shared local DB, editable from the UI
+- **Custom categories** — create categories/subcategories with roles that drive the health score
 - **AI categorization** — Ollama (llama3) with SQLite dedup cache; rules always take priority
 - **Description cleaning** — normalize messy bank descriptions via rules or quick inline editor
 - **Month assignment** — move any transaction to a different accounting month (useful for salaries paid at month-end or recurring bills that straddle months)
 - **Financial health score** — 7 rules → 0-100 score with amber/red alerts
-- **Multi-user** — per-user SQLite databases, shared description rules
+- **Multi-user** — per-user SQLite databases, shared rules and categories
 - **i18n** — Spanish / English
 
 ---

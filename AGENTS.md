@@ -17,10 +17,10 @@ SqliteStore ──► FastAPI (backend/) ──► Next.js (frontend/)
 ```
 forecast-money/
 ├── banks/          ← per-bank ETL config (YAML); sample_bank.yaml is the annotated reference
-├── config/         ← category_rules.yaml (hot-reload); clean_description_rules.yaml (LEGACY)
+├── config/         ← legacy YAML seeds → migrated to shared.db on first startup
 ├── backend/        ← Python 3.12 / FastAPI
-│   ├── main.py     ← app + CORS + startup migration
-│   ├── api/        ← routes.py, models.py, deps.py, description_rules.py
+│   ├── main.py     ← app + CORS + startup migration/seeds
+│   ├── api/        ← routes.py, category_rules.py, description_rules.py, models.py, deps.py
 │   ├── categorizer/← rule_categorizer, description_cleaner, ai_categorizer
 │   ├── db/         ← sqlite_store.py, shared_store.py, user_store.py
 │   ├── parser/     ← bank_parser.py, normalizer.py
@@ -40,7 +40,7 @@ forecast-money/
 - **No hardcoded bank logic** — all column mappings live in `banks/*.yaml`
 - **No calculations in the frontend** — aggregations, projections, totals come from the backend
 - **Description rules live in `data/shared.db`** — NOT the YAML (legacy). Edit via `/rules` UI or API.
-- **Category rules still in YAML** — `config/category_rules.yaml`, hot-reloaded via `POST /api/v1/recategorize`
+- **Categories + category rules live in `data/shared.db`** — seeded from YAML/defaults on first startup; edit via `/categories` UI or API.
 - **SQLite only** — no external DB, no cloud dependencies
 - **Multi-user** — each user has `data/users/{user_id}.db`; shared rules in `data/shared.db`; auth in `data/auth.db`
 - **Auth** — httpOnly JWT cookie (`access_token`). All finance endpoints require auth.
@@ -51,8 +51,8 @@ forecast-money/
 | File | Contents | Class |
 |---|---|---|
 | `data/auth.db` | users table | `UserStore` |
-| `data/shared.db` | description_rules (shared across users) | `SharedStore` |
-| `data/users/{id}.db` | transactions, categories, imports, health_score_history | `SqliteStore` |
+| `data/shared.db` | description_rules, categories, category_rules | `SharedStore` |
+| `data/users/{id}.db` | transactions, imports, health_score_history | `SqliteStore` |
 
 ## Running locally
 
@@ -76,13 +76,14 @@ python3 etl.py ../statement.xlsx --use-ai     # Ollama AI categorization
 |---|---|
 | API endpoint logic | `backend/api/routes.py` |
 | Description rules CRUD + suggestion engine | `backend/api/description_rules.py` |
+| Category rules CRUD + category suggestions | `backend/api/category_rules.py` |
 | Request/response shapes | `backend/api/models.py` |
 | DB queries / schema (per-user) | `backend/db/sqlite_store.py` |
-| Shared DB (description rules) | `backend/db/shared_store.py` |
+| Shared DB (rules + categories) | `backend/db/shared_store.py` |
 | Auth DB (users) | `backend/db/user_store.py` |
 | Financial health rules | `backend/rules/health_engine.py` |
 | Bank file parsing | `backend/parser/bank_parser.py` |
-| Category/subcategory taxonomy | `config/category_rules.yaml` + `frontend/components/CategoryTree.tsx` |
+| Category/subcategory taxonomy | `categories` table in shared.db (seeded in `main.py`), served via `/api/v1/categories` |
 | Description cleaning logic | `backend/categorizer/description_cleaner.py` |
 | Dashboard page | `frontend/app/page.tsx` |
 | Transactions page | `frontend/app/transactions/page.tsx` |
