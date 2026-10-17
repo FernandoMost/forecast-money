@@ -12,6 +12,7 @@
 | `api/routes.py` | Finance endpoints + categories CRUD |
 | `api/description_rules.py` | Description rules CRUD + suggestions + strip config |
 | `api/category_rules.py` | Category rules CRUD + category suggestion engine |
+| `api/backup.py` | AES-256 encrypted backup export/restore (auth.db + shared.db + users/*.db) |
 | `api/deps.py` | Settings, `get_store()`, `get_shared_store()` |
 | `api/models.py` | Pydantic request/response models |
 | `db/sqlite_store.py` | Per-user DB — schema source of truth |
@@ -53,6 +54,8 @@ All paths prefixed with `/api/v1`. All require auth — `get_store` depends on `
 | `POST` | `/category-rules/apply` | reload rules + recategorize user txs |
 | `GET` | `/category-suggestions` | uncategorized txs grouped by clean_description |
 | `POST` | `/category-suggestions/dismiss`, `/apply` | hide / assign category (+ optional `create_rule`) |
+| `POST` | `/backup/export` | `{password}` → AES-256 zip download (auth.db, shared.db, users/*.db) |
+| `POST` | `/backup/restore` | multipart `file` + `password` → full replace, auto-backups current `data/` |
 
 ## `get_transactions()` signature
 ```python

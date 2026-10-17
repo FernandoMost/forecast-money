@@ -20,7 +20,7 @@ forecast-money/
 ├── config/         ← legacy YAML seeds → migrated to shared.db on first startup
 ├── backend/        ← Python 3.12 / FastAPI
 │   ├── main.py     ← app + CORS + startup migration/seeds
-│   ├── api/        ← routes.py, category_rules.py, description_rules.py, models.py, deps.py
+│   ├── api/        ← routes.py, category_rules.py, description_rules.py, backup.py, models.py, deps.py
 │   ├── categorizer/← rule_categorizer, description_cleaner, ai_categorizer
 │   ├── db/         ← sqlite_store.py, shared_store.py, user_store.py
 │   ├── parser/     ← bank_parser.py, normalizer.py
@@ -83,6 +83,7 @@ python3 etl.py ../statement.xlsx --use-ai     # Ollama AI categorization
 | Auth DB (users) | `backend/db/user_store.py` |
 | Financial health rules | `backend/rules/health_engine.py` |
 | Bank file parsing | `backend/parser/bank_parser.py` |
+| Backup export/restore (AES-256 ZIP) | `backend/api/backup.py` |
 | Category/subcategory taxonomy | `categories` table in shared.db (seeded in `main.py`), served via `/api/v1/categories` |
 | Description cleaning logic | `backend/categorizer/description_cleaner.py` |
 | Dashboard page | `frontend/app/page.tsx` |

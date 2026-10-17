@@ -19,6 +19,7 @@ export default function Nav() {
     { href: "/categories",   label: t("nav.categories") },
     { href: "/rules",        label: t("nav.rules") },
     { href: "/upload",       label: t("nav.upload") },
+    { href: "/settings",     label: t("nav.settings") },
   ];
 
   return (

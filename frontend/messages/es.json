@@ -452,5 +452,29 @@
     "associateCategoryHint": "La categoría asociada tendrá prioridad máxima sobre las demás reglas.",
     "noAssociation": "Sin asociación",
     "clearAssociation": "Quitar asociación"
+  },
+  "settings": {
+    "title": "Ajustes",
+    "subtitle": "Gestión de tu entorno local.",
+    "exportCard": "Exportar copia de seguridad",
+    "exportDesc": "Genera un archivo ZIP cifrado con todo tu entorno local: transacciones, categorías, reglas y credenciales. Guárdalo en un lugar seguro (disco duro, USB…). Nunca se sube a internet.",
+    "exportPassword": "Contraseña del ZIP",
+    "exportConfirmPassword": "Repite la contraseña",
+    "exportPasswordHint": "Mínimo 8 caracteres. Sin ella no podrás restaurar el archivo.",
+    "exportButton": "Descargar backup cifrado",
+    "exportLoading": "Generando backup…",
+    "restoreCard": "Restaurar copia de seguridad",
+    "restoreDesc": "Reemplaza el contenido de data/ por el del backup. Si hay datos actuales, se guardarán automáticamente como data.backup-{fecha}. Tras restaurar, vuelve a iniciar sesión con tus credenciales originales.",
+    "restoreFile": "Archivo ZIP de backup",
+    "restorePassword": "Contraseña del ZIP",
+    "restoreWarning": "Esto reemplaza todos los datos locales. La operación no se puede deshacer.",
+    "restoreConfirmLabel": "Entiendo que se borrarán los datos actuales",
+    "restoreButton": "Restaurar backup",
+    "restoreLoading": "Restaurando…",
+    "restoreSuccess": "Backup restaurado: {files}. Los datos anteriores están en {previousBackup}.",
+    "restoreLoginAgain": "Restauración completada. Vuelve a iniciar sesión.",
+    "errorPasswordMatch": "Las contraseñas no coinciden.",
+    "errorShortPassword": "La contraseña debe tener al menos 8 caracteres.",
+    "errorNoFile": "Selecciona un archivo de backup."
   }
 }

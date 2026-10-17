@@ -452,5 +452,29 @@
     "associateCategoryHint": "The associated category will take absolute priority over all other rules.",
     "noAssociation": "No association",
     "clearAssociation": "Remove association"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Manage your local environment.",
+    "exportCard": "Export backup",
+    "exportDesc": "Generate an AES-encrypted ZIP containing your whole local environment: transactions, categories, rules and credentials. Keep it somewhere safe (hard drive, USB…). It never leaves your machine.",
+    "exportPassword": "ZIP password",
+    "exportConfirmPassword": "Repeat password",
+    "exportPasswordHint": "At least 8 characters. You will need it to restore this file.",
+    "exportButton": "Download encrypted backup",
+    "exportLoading": "Generating backup…",
+    "restoreCard": "Restore backup",
+    "restoreDesc": "Replace the contents of data/ with the backup. If current data exists, it will be automatically saved as data.backup-{date}. After restoring, log in again with your original credentials.",
+    "restoreFile": "Backup ZIP file",
+    "restorePassword": "ZIP password",
+    "restoreWarning": "This replaces all local data. It cannot be undone.",
+    "restoreConfirmLabel": "I understand current data will be overwritten",
+    "restoreButton": "Restore backup",
+    "restoreLoading": "Restoring…",
+    "restoreSuccess": "Backup restored: {files}. Previous data is in {previousBackup}.",
+    "restoreLoginAgain": "Restore complete. Please log in again.",
+    "errorPasswordMatch": "Passwords do not match.",
+    "errorShortPassword": "Password must be at least 8 characters.",
+    "errorNoFile": "Select a backup file."
   }
 }

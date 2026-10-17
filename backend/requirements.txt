@@ -10,4 +10,5 @@ requests>=2.31.0
 python-dateutil>=2.8.2
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
+pyzipper>=0.3.6
 

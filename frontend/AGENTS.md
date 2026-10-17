@@ -16,6 +16,7 @@
 | `/health` | `app/health/page.tsx` | Financial health score |
 | `/categories` | `app/categories/page.tsx` | Tabs: categories CRUD, category rules, category suggestions |
 | `/rules` | `app/rules/page.tsx` | Description rules + suggestion/clean/strip tabs |
+| `/settings` | `app/settings/page.tsx` | Backup export/restore + local settings |
 | `/login` | `app/login/page.tsx` | Auth |
 
 ## Key files
@@ -59,6 +60,8 @@ api.categorySuggestions(limit?) / dismissCategorySuggestion(desc) / applyCategor
 // Strip config + imports
 api.stripConfig() / addStripEntry(type, value) / deleteStripEntry(id) / stripSuggestions()
 api.listImports() / deleteImport(id) / clearAllData()
+// Backup
+api.exportBackup(password) / api.restoreBackup(file, password)
 ```
 
 `TransactionList`: `{ total, amount_total, limit, offset, items[] }` — `total`/`amount_total` are full unpaginated counts.

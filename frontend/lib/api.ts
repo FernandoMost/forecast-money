@@ -95,6 +95,22 @@ async function del<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// postJson variant for binary downloads — returns the raw Blob
+async function postJsonBlob(path: string, body: unknown): Promise<Blob> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "include",
+  });
+  if (res.status === 401) throw new AuthError();
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`API POST ${path} → ${res.status}: ${err}`);
+  }
+  return res.blob();
+}
+
 // ---------------------------------------------------------------------------
 // Auth error — thrown when the server returns 401
 // Components / middleware can catch this to redirect to /login
@@ -429,6 +445,13 @@ export interface ApplyCategoryRulesResponse {
   updated: number;
 }
 
+// --- Backup types ---
+
+export interface BackupRestoreResponse {
+  restored: string[];
+  previous_backup: string | null;
+}
+
 // --- Imports types ---
 
 export interface ImportMetadata {
@@ -579,4 +602,14 @@ export const api = {
     subcategory?: string | null;
     create_rule?: boolean;
   }) => postJson<{ updated: number; rule_id: number | null }>("/category-suggestions/apply", data),
+
+  // --- Backup (AES-256 encrypted full-data snapshot) ---
+  exportBackup: (password: string) =>
+    postJsonBlob("/backup/export", { password }),
+  restoreBackup: (file: File, password: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("password", password);
+    return post<BackupRestoreResponse>("/backup/restore", form);
+  },
 };

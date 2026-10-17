@@ -346,3 +346,16 @@ class DashboardResponse(BaseModel):
     # True when primary_month is the current (partial) month
     primary_is_current: bool
     health: HealthScoreResponse
+
+
+# ---------------------------------------------------------------------------
+# Backup
+# ---------------------------------------------------------------------------
+
+class BackupExportRequest(BaseModel):
+    password: str = Field(min_length=8)
+
+
+class BackupRestoreResponse(BaseModel):
+    restored: list[str]                # relative paths of the restored DBs
+    previous_backup: str | None        # dir name where the old data/ was moved
