@@ -71,7 +71,13 @@
     "savingsTarget": "Objetivo",
     "savingsOnTarget": "Meses en objetivo",
     "savingsChart": "Ahorro mensual (últimos 6)",
-    "savingsCol": { "month": "Mes", "income": "Ingresos", "expenses": "Gastos", "savings": "Ahorro", "rate": "Tasa" },
+    "savingsCol": {
+      "month": "Mes",
+      "income": "Ingresos",
+      "expenses": "Gastos",
+      "savings": "Ahorro",
+      "rate": "Tasa"
+    },
     "emergencyBalance": "Saldo actual",
     "emergencyFixed": "Gasto fijo mensual medio",
     "emergencyMonths": "Meses cubiertos",
@@ -91,7 +97,12 @@
     "leisureLeft": "{amount} restante",
     "leisureCaption": "{budget} = 20% de {income} de ingresos en {month}",
     "leisureTxs": "Movimientos de ocio ({month})",
-    "leisureCols": { "date": "Fecha", "desc": "Descripción", "cat": "Categoría", "amount": "Importe" },
+    "leisureCols": {
+      "date": "Fecha",
+      "desc": "Descripción",
+      "cat": "Categoría",
+      "amount": "Importe"
+    },
     "outliersNone": "No se detectaron movimientos inusuales.",
     "outliersFound": "Movimientos inusuales detectados",
     "outliersTxs": "Movimientos que superan 2× la media de su categoría",
@@ -156,7 +167,20 @@
     "moveMonthTooltip": "Mover al mes que corresponde",
     "moveMonthLabel": "Mes contable",
     "moveMonthSave": "Mover",
-    "moveMonthCancel": "Cancelar"
+    "moveMonthCancel": "Cancelar",
+    "prorateTitle": "Prorratear gasto",
+    "prorateDescription": "Reparte este gasto entre los meses que elijas. Los resúmenes, la salud financiera y las tendencias usarán la parte mensual; el movimiento real no se modifica.",
+    "prorateLoadError": "No se pudo cargar el contexto del prorrateo.",
+    "prorateSaveError": "No se pudo guardar el prorrateo.",
+    "prorateTxMonth": "mes original del cargo",
+    "proratePreview": "{n} meses × {amount}/mes (el último absorbe el redondeo de céntimos)",
+    "proratePickMonths": "Selecciona al menos 2 meses para repartir el gasto.",
+    "prorateSimilarTitle": "Movimientos similares anteriores",
+    "prorateRemove": "Quitar prorrateo",
+    "prorateSave": "Prorratear",
+    "prorateBadge": "Prorrateado: {n} meses × {amount}/mes",
+    "saving": "Guardando…",
+    "cancel": "Cancelar"
   },
   "categories": {
     "title": "Categorías",

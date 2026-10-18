@@ -24,6 +24,7 @@ from api.routes import router
 from api.description_rules import router as description_rules_router
 from api.category_rules import router as category_rules_router
 from api.backup import router as backup_router
+from api.prorations import router as prorations_router
 from auth.routes import router as auth_router
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,7 @@ app.include_router(router, prefix="/api/v1")
 app.include_router(description_rules_router, prefix="/api/v1")
 app.include_router(category_rules_router, prefix="/api/v1")
 app.include_router(backup_router, prefix="/api/v1")
+app.include_router(prorations_router, prefix="/api/v1")
 
 
 # ---------------------------------------------------------------------------

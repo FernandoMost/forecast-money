@@ -18,7 +18,6 @@
 | `/rules` | `app/rules/page.tsx` | Description rules + suggestion/clean/strip tabs |
 | `/settings` | `app/settings/page.tsx` | Backup export/restore + local settings |
 | `/login` | `app/login/page.tsx` | Auth |
-
 ## Key files
 | File | Role |
 |---|---|
@@ -62,6 +61,8 @@ api.stripConfig() / addStripEntry(type, value) / deleteStripEntry(id) / stripSug
 api.listImports() / deleteImport(id) / clearAllData()
 // Backup
 api.exportBackup(password) / api.restoreBackup(file, password)
+// Expense proration
+api.getProration(txId) / api.setProration(txId, months) / api.deleteProration(txId)
 ```
 
 `TransactionList`: `{ total, amount_total, limit, offset, items[] }` — `total`/`amount_total` are full unpaginated counts.
@@ -92,6 +93,7 @@ Never render raw `YYYY-MM-DD` or `YYYY-MM` strings.
 - Edit column: `_edit` — `enableSorting: false`, `enableResizing: false`
 - `meta: { align: "right" }` on `amount` and `balance`
 - Sticky bottom bar: `fixed bottom-0`, page body has `pb-16`
+- Amount column: `÷n` badge when `tx.proration_months` is set (tooltip with €/mes); `÷` icon button on expenses opens `ProrationModal` (year switcher ±1, 12 month chips, similar-past list). Saving calls `api.setProration`, updates `proration_months` in row state. Monthly-amount shown in UI is display-only division — the official value comes from the backend (`monthly_amount`).
 
 ## Rules page — tabs
 - **Reglas**: description rules CRUD

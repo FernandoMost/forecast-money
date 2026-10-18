@@ -631,6 +631,15 @@ class HealthEngine:
     def analyze(self, transactions: list[dict]) -> HealthReport:
         # Filter reversals for most rules
         clean_txs = [t for t in transactions if not t.get("is_reversal")]
+        real_tx_count = len(clean_txs)
+
+        # Apply expense prorations (see db/sqlite_store.expand_allocations):
+        # one-off expenses spread over several months become their monthly share.
+        if self._store is not None and hasattr(self._store, "expand_allocations"):
+            try:
+                clean_txs = self._store.expand_allocations(clean_txs)
+            except Exception:
+                pass  # aggregation without prorations is a safe fallback
         monthly = _group_by_month(clean_txs)
 
         # Resolve category sets from DB roles (with fallback)
@@ -677,6 +686,6 @@ class HealthEngine:
                 "total_expenses": round(total_expenses, 2),
                 "net_savings": round(total_income - total_expenses, 2),
                 "months_analyzed": len(monthly),
-                "transaction_count": len(clean_txs),
+                "transaction_count": real_tx_count,
             },
         )

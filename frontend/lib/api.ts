@@ -140,8 +140,8 @@ export interface MonthlySummary {
   total_expenses: number;
   net_savings: number;
   savings_rate: number;
-  min_balance: number;
-  max_balance: number;
+  min_balance: number | null;
+  max_balance: number | null;
   by_category: CategoryBreakdown[];
 }
 
@@ -163,6 +163,7 @@ export interface Transaction {
   category_source: string | null;
   month: string;
   year: number;
+  proration_months?: string[] | null;  // set when the expense is spread over months
 }
 
 export interface TransactionList {
@@ -293,8 +294,8 @@ export interface MonthSummaryForDashboard {
   net_savings: number;
   drew_from_savings: boolean;
   savings_rate: number;
-  min_balance: number;
-  max_balance: number;
+  min_balance: number | null;
+  max_balance: number | null;
   last_balance: number | null;
   last_balance_date: string | null;
   leisure_spent: number;
@@ -450,6 +451,38 @@ export interface ApplyCategoryRulesResponse {
 export interface BackupRestoreResponse {
   restored: string[];
   previous_backup: string | null;
+}
+
+// --- Proration types ---
+
+export interface ProrationTransactionContext {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  month: string;
+  is_reversal: boolean;
+}
+
+export interface SimilarTransaction {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  months: string[] | null;
+}
+
+export interface ProrationContextResponse {
+  transaction: ProrationTransactionContext;
+  months: string[] | null;
+  monthly_amount: number | null;
+  similar: SimilarTransaction[];
+}
+
+export interface ProrationResponse {
+  transaction_id: string;
+  months: string[];
+  monthly_amount: number;
 }
 
 // --- Imports types ---
@@ -612,4 +645,11 @@ export const api = {
     form.append("password", password);
     return post<BackupRestoreResponse>("/backup/restore", form);
   },
+
+  // --- Expense proration ---
+  getProration: (txId: string) => get<ProrationContextResponse>(`/transactions/${txId}/proration`),
+  setProration: (txId: string, months: string[]) =>
+    putJson<ProrationResponse>(`/transactions/${txId}/proration`, { months }),
+  deleteProration: (txId: string) =>
+    del<void>(`/transactions/${txId}/proration`),
 };

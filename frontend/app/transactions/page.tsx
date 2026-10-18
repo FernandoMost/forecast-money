@@ -12,7 +12,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, PatchTransactionRequest, Transaction, TransactionList } from "@/lib/api";
+import { api, PatchTransactionRequest, ProrationContextResponse, Transaction, TransactionList } from "@/lib/api";
 import { formatEur, formatDateSlash, toIntlLocale } from "@/lib/utils";
 import CategoryTree, {
   useCategoryTree,
@@ -190,6 +190,212 @@ function InlineDescEdit({
         )}
       </button>
     </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Proration modal — spread a one-off expense across selected months
+// ---------------------------------------------------------------------------
+
+function ProrationModal({
+  tx,
+  onClose,
+  onSaved,
+}: {
+  tx: Transaction;
+  onClose: () => void;
+  onSaved: (updated: Partial<Transaction>) => void;
+}) {
+  const { t } = useT();
+  const [context, setContext] = useState<ProrationContextResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set(tx.proration_months ?? []));
+  const [viewYear, setViewYear] = useState<number>(() => parseInt(tx.month.slice(0, 4)));
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  useEffect(() => {
+    api.getProration(tx.id)
+      .then((res) => {
+        setContext(res);
+        // Preselect the current allocation, if any
+        if (res.months) setSelected(new Set(res.months));
+      })
+      .catch(() => setError(t("transactions.prorateLoadError")))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tx.id]);
+
+  function toggleMonth(m: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(m)) next.delete(m);
+      else next.add(m);
+      return next;
+    });
+  }
+
+  async function save() {
+    if (saving || selected.size < 2) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.setProration(tx.id, Array.from(selected).sort());
+      onSaved({ proration_months: Array.from(selected).sort() });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("transactions.prorateSaveError"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    if (removing) return;
+    setRemoving(true);
+    setError(null);
+    try {
+      await api.deleteProration(tx.id);
+      onSaved({ proration_months: null });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("transactions.prorateSaveError"));
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  const n = selected.size;
+  const monthly = n >= 2 ? Math.round(Math.round(Math.abs(tx.amount) * 100) / n) / 100 : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-5 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t("transactions.prorateTitle")}</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {tx.clean_description ?? tx.description} · {formatDateSlash(tx.date, toIntlLocale("es"))} · {formatEur(tx.amount)}
+          </p>
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">{t("transactions.prorateDescription")}</p>
+
+        {loading && <div className="py-8 text-center text-gray-400 text-sm">{t("transactions.loading")}</div>}
+
+        {!loading && (
+          <>
+            {/* Year switcher + month chips */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <button
+                  onClick={() => setViewYear((y) => y - 1)}
+                  className="px-2 py-1 text-sm rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
+                >‹</button>
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{viewYear}</span>
+                <button
+                  onClick={() => setViewYear((y) => y + 1)}
+                  className="px-2 py-1 text-sm rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
+                >›</button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {Array.from({ length: 12 }, (_, i) => {
+                  const m = `${viewYear}-${String(i + 1).padStart(2, "0")}`;
+                  const active = selected.has(m);
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => toggleMonth(m)}
+                      className={`px-2 py-1.5 rounded text-xs font-medium border transition-colors ${
+                        active
+                          ? "bg-indigo-600 border-indigo-600 text-white"
+                          : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-300"
+                      }`}
+                    >
+                      {new Date(viewYear, i, 1).toLocaleDateString("es", { month: "short" }).replace(".", "")}
+                      {tx.month === m && <span className="ml-1 text-[9px] opacity-70">◆</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5">
+                ◆ = {t("transactions.prorateTxMonth")}
+              </p>
+            </div>
+
+            {/* Live preview — display-only division; backend computes the official value */}
+            <div className={`rounded-lg p-3 text-sm ${n >= 2 ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-800 dark:text-indigo-300" : "bg-gray-50 dark:bg-gray-800 text-gray-500"}`}>
+              {n >= 2
+                ? t("transactions.proratePreview", { n: String(n), amount: formatEur(-monthly!) })
+                : t("transactions.proratePickMonths")}
+            </div>
+
+            {/* Similar past expenses */}
+            {context && context.similar.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">
+                  {t("transactions.prorateSimilarTitle")}
+                </h3>
+                <div className="divide-y divide-gray-100 dark:divide-gray-800 border border-gray-100 dark:border-gray-800 rounded-lg">
+                  {context.similar.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                      <span className="text-gray-600 dark:text-gray-300 shrink-0">{formatDateSlash(s.date, toIntlLocale("es"))}</span>
+                      <span className="tabular-nums text-gray-700 dark:text-gray-200 font-medium shrink-0">{formatEur(s.amount)}</span>
+                      {s.months && s.months.length >= 2 ? (
+                        <span className="text-indigo-600 dark:text-indigo-400 font-medium shrink-0">
+                          ÷ {s.months.length} × {formatEur(-Math.round(Math.round(Math.abs(s.amount) * 100) / s.months.length) / 100)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600 shrink-0">—</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              {tx.proration_months && tx.proration_months.length > 0 && (
+                <button
+                  onClick={remove}
+                  disabled={removing}
+                  className="px-3 py-1.5 text-sm rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40"
+                >
+                  {removing ? (
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                      <circle cx="12" cy="12" r="10" strokeOpacity={0.2} />
+                      <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    t("transactions.prorateRemove")
+                  )}
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                {t("transactions.cancel")}
+              </button>
+              <button
+                onClick={save}
+                disabled={saving || n < 2}
+                className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-40"
+              >
+                {saving ? t("transactions.saving") : t("transactions.prorateSave")}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -663,6 +869,9 @@ export default function TransactionsPage() {
     () => lsGet<VisibilityState>(LS_KEY_VISIBILITY, {})
   );
 
+  // Proration modal
+  const [proratingTx, setProratingTx] = useState<Transaction | null>(null);
+
   // Load months on mount; if current month has no data, fall back to most recent
   useEffect(() => {
     api.months().then((d) => {
@@ -801,12 +1010,42 @@ export default function TransactionsPage() {
       minSize: 80,
       enableSorting: true,
       meta: { align: "right" },
-      cell: ({ row }) => {
+      cell: ({ row, table: tbl }) => {
         const tx = row.original;
+        const meta = tbl.options.meta as {
+          onProrate?: (tx: Transaction) => void;
+        };
         const isIncome = tx.amount > 0 && !tx.is_reversal;
+        const canProrate = tx.amount < 0 && !tx.is_reversal && !!meta?.onProrate;
+        const pror = tx.proration_months?.length ?? 0;
         return (
-          <span className={`tabular-nums whitespace-nowrap font-medium ${isIncome ? "text-green-700 font-bold" : "text-gray-700 dark:text-gray-200"}`}>
-            {formatEur(tx.amount)}
+          <span className="tabular-nums whitespace-nowrap font-medium inline-flex items-center justify-end gap-1">
+            <span className={isIncome ? "text-green-700 font-bold" : "text-gray-700 dark:text-gray-200"}>
+              {formatEur(tx.amount)}
+            </span>
+            {pror > 1 && (
+              <span
+                title={t("transactions.prorateBadge", {
+                  n: String(pror),
+                  amount: formatEur(-Math.round(Math.round(Math.abs(tx.amount) * 100) / pror) / 100),
+                })}
+                className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 shrink-0"
+              >
+                ÷{pror}
+              </span>
+            )}
+            {canProrate && (
+              <button
+                onClick={(e) => { e.stopPropagation(); meta.onProrate?.(tx); }}
+                title={t("transactions.prorateTitle")}
+                className="p-0.5 rounded text-gray-300 dark:text-gray-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors shrink-0"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                  <circle cx="12" cy="12" r="3" />
+                  <path strokeLinecap="round" d="M5.5 7.5 18.5 16.5M18.5 7.5 5.5 16.5" />
+                </svg>
+              </button>
+            )}
           </span>
         );
       },
@@ -856,7 +1095,7 @@ export default function TransactionsPage() {
     getSortedRowModel: getSortedRowModel(),
     manualSorting: true,
     defaultColumn: { minSize: 60 },
-    meta: { onSave: handleSave, availableMonths: months },
+    meta: { onSave: handleSave, availableMonths: months, onProrate: setProratingTx },
   });
 
   const colCount = table.getVisibleLeafColumns().length;
@@ -1005,6 +1244,15 @@ export default function TransactionsPage() {
           filterLabel={filterLabel ?? ""}
           offset={offset}
           onPageChange={setOffset}
+        />
+      )}
+
+      {/* Proration modal */}
+      {proratingTx && (
+        <ProrationModal
+          tx={proratingTx}
+          onClose={() => setProratingTx(null)}
+          onSaved={(updated) => handleSave(proratingTx.id, updated)}
         />
       )}
     </div>

@@ -71,7 +71,13 @@
     "savingsTarget": "Target",
     "savingsOnTarget": "Months on target",
     "savingsChart": "Savings per month (last 6)",
-    "savingsCol": { "month": "Month", "income": "Income", "expenses": "Expenses", "savings": "Savings", "rate": "Rate" },
+    "savingsCol": {
+      "month": "Month",
+      "income": "Income",
+      "expenses": "Expenses",
+      "savings": "Savings",
+      "rate": "Rate"
+    },
     "emergencyBalance": "Current balance",
     "emergencyFixed": "Avg monthly fixed",
     "emergencyMonths": "Months covered",
@@ -91,7 +97,12 @@
     "leisureLeft": "{amount} left",
     "leisureCaption": "{budget} = 20% of {income} income in {month}",
     "leisureTxs": "Leisure transactions ({month})",
-    "leisureCols": { "date": "Date", "desc": "Description", "cat": "Category", "amount": "Amount" },
+    "leisureCols": {
+      "date": "Date",
+      "desc": "Description",
+      "cat": "Category",
+      "amount": "Amount"
+    },
     "outliersNone": "No unusual transactions detected.",
     "outliersFound": "Unusual transactions found",
     "outliersTxs": "Transactions exceeding 2× category average",
@@ -156,7 +167,20 @@
     "moveMonthTooltip": "Move to accounting month",
     "moveMonthLabel": "Accounting month",
     "moveMonthSave": "Move",
-    "moveMonthCancel": "Cancel"
+    "moveMonthCancel": "Cancel",
+    "prorateTitle": "Prorate expense",
+    "prorateDescription": "Spread this expense across the months you choose. Summaries, the health score and trends will use the monthly share; the real transaction is never modified.",
+    "prorateLoadError": "Could not load proration context.",
+    "prorateSaveError": "Could not save the proration.",
+    "prorateTxMonth": "original expense month",
+    "proratePreview": "{n} months × {amount}/month (last month absorbs cent rounding)",
+    "proratePickMonths": "Select at least 2 months to spread the expense.",
+    "prorateSimilarTitle": "Past similar expenses",
+    "prorateRemove": "Remove proration",
+    "prorateSave": "Prorate",
+    "prorateBadge": "Prorated: {n} months × {amount}/month",
+    "saving": "Saving…",
+    "cancel": "Cancel"
   },
   "categories": {
     "title": "Categories",

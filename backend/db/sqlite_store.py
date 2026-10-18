@@ -86,6 +86,13 @@ class SqliteStore:
                     dismissed_at TEXT NOT NULL DEFAULT (datetime('now'))
                 );
 
+                CREATE TABLE IF NOT EXISTS expense_allocations (
+                    transaction_id TEXT PRIMARY KEY REFERENCES transactions(id),
+                    months         TEXT NOT NULL,   -- JSON array of "YYYY-MM"
+                    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_tx_month    ON transactions(month);
                 CREATE INDEX IF NOT EXISTS idx_tx_date     ON transactions(date);
                 CREATE INDEX IF NOT EXISTS idx_tx_category ON transactions(category);
@@ -184,6 +191,7 @@ class SqliteStore:
             tx_count = conn.execute(
                 "SELECT COUNT(*) FROM transactions WHERE import_id = ?", (import_id,)
             ).fetchone()[0]
+            conn.execute("DELETE FROM expense_allocations WHERE transaction_id IN (SELECT id FROM transactions WHERE import_id = ?)")
             conn.execute("DELETE FROM health_score_history WHERE import_id = ?", (import_id,))
             conn.execute("DELETE FROM transactions WHERE import_id = ?", (import_id,))
             conn.execute("DELETE FROM imports WHERE id = ?", (import_id,))
@@ -384,7 +392,7 @@ class SqliteStore:
             sort_by = "date"
         order = "DESC" if sort_dir.lower() == "desc" else "ASC"
         # Always add rowid as tiebreaker for stable pagination
-        order_clause = f"ORDER BY {sort_by} {order}, rowid {order}"
+        order_clause = f"ORDER BY t.{sort_by} {order}, t.rowid {order}"
         conditions: list[str] = []
         params: list[Any] = []
 
@@ -427,11 +435,12 @@ class SqliteStore:
             # Paginated rows
             rows = conn.execute(
                 f"""
-                SELECT id, bank_id, date, date_value, description, stripped_description,
-                       clean_description, clean_description_source, amount, balance,
-                       currency, is_reversal, category, subcategory,
-                       category_source, month, year
-                FROM transactions
+                SELECT t.id, t.bank_id, t.date, t.date_value, t.description, t.stripped_description,
+                       t.clean_description, t.clean_description_source, t.amount, t.balance,
+                       t.currency, t.is_reversal, t.category, t.subcategory,
+                       t.category_source, t.month, t.year, ea.months AS proration_months
+                FROM transactions t
+                LEFT JOIN expense_allocations ea ON ea.transaction_id = t.id
                 {where}
                 {order_clause}
                 LIMIT ? OFFSET ?
@@ -442,8 +451,17 @@ class SqliteStore:
         cols = ["id", "bank_id", "date", "date_value", "description", "stripped_description",
                 "clean_description", "clean_description_source",
                 "amount", "balance", "currency", "is_reversal",
-                "category", "subcategory", "category_source", "month", "year"]
-        items = [dict(zip(cols, r)) for r in rows]
+                "category", "subcategory", "category_source", "month", "year",
+                "proration_months"]
+        items: list[dict] = []
+        for r in rows:
+            item = dict(zip(cols, r))
+            if item.get("proration_months"):
+                try:
+                    item["proration_months"] = json.loads(item["proration_months"])
+                except (json.JSONDecodeError, TypeError):
+                    item["proration_months"] = None
+            items.append(item)
         return {"total": total_count, "amount_total": amount_total, "items": items}
 
     def get_available_months(self) -> list[str]:
@@ -454,43 +472,30 @@ class SqliteStore:
         return [r[0] for r in rows]
 
     def get_monthly_summary(self, month: str) -> dict:
+        # Real-side figures: movement count and balance range (balances are bank
+        # reality and are never prorated).
         with self._connect() as conn:
-            agg = conn.execute("""
-                SELECT
-                    COUNT(*)                                              as tx_count,
-                    SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END)     as total_income,
-                    SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END)     as total_expenses,
-                    MIN(balance)                                          as min_balance,
-                    MAX(balance)                                          as max_balance
+            real = conn.execute("""
+                SELECT COUNT(*), MIN(balance), MAX(balance)
                 FROM transactions
                 WHERE month = ? AND is_reversal = 0
             """, (month,)).fetchone()
 
-            by_category = conn.execute("""
-                SELECT category, SUM(amount) as total, COUNT(*) as count
-                FROM transactions
-                WHERE month = ? AND is_reversal = 0
-                GROUP BY category
-                ORDER BY total ASC
-            """, (month,)).fetchall()
-
-        income = round(agg[1] or 0.0, 2)
-        expenses = round(abs(agg[2] or 0.0), 2)
-        savings = round(income - expenses, 2)
+        # Income/expenses/by_category use prorated amounts (see expense_allocations).
+        total_income, total_expenses, by_category = self._allocated_month_totals(month)
+        expenses = round(abs(total_expenses), 2)
+        savings = round(total_income - expenses, 2)
 
         return {
             "month": month,
-            "tx_count": agg[0] or 0,
-            "total_income": income,
+            "tx_count": real[0] or 0,
+            "total_income": total_income,
             "total_expenses": expenses,
             "net_savings": savings,
-            "savings_rate": round(savings / income * 100, 1) if income > 0 else 0.0,
-            "min_balance": round(agg[3] or 0.0, 2),
-            "max_balance": round(agg[4] or 0.0, 2),
-            "by_category": [
-                {"category": r[0], "total": round(r[1], 2), "count": r[2]}
-                for r in by_category
-            ],
+            "savings_rate": round(savings / total_income * 100, 1) if total_income > 0 else 0.0,
+            "min_balance": round(real[1], 2) if real[1] is not None else None,
+            "max_balance": round(real[2], 2) if real[2] is not None else None,
+            "by_category": by_category,
         }
 
     def get_all_transactions_for_rules(self) -> list[dict]:
@@ -524,15 +529,12 @@ class SqliteStore:
         last_balance_date, and leisure_spent (restaurants + entertainment).
         """
         with self._connect() as conn:
-            agg = conn.execute("""
+            # Real-side figures only: counts, balances and dates are bank reality
+            # and are never prorated.
+            real = conn.execute("""
                 SELECT
-                    COUNT(*)                                              as tx_count,
-                    SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END)     as total_income,
-                    SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END)     as total_expenses,
-                    MIN(balance)                                          as min_balance,
-                    MAX(balance)                                          as max_balance,
-                    MIN(date)                                             as first_date,
-                    MAX(date)                                             as last_date
+                    COUNT(*), MIN(balance), MAX(balance),
+                    MIN(date), MAX(date)
                 FROM transactions
                 WHERE month = ? AND is_reversal = 0
             """, (month,)).fetchone()
@@ -545,35 +547,21 @@ class SqliteStore:
                 LIMIT 1
             """, (month,)).fetchone()
 
-            # Leisure = categories passed in (from shared.db role='leisure')
-            if leisure_category_ids:
-                placeholders = ",".join("?" * len(leisure_category_ids))
-                leisure_row = conn.execute(
-                    f"""SELECT COALESCE(SUM(ABS(t.amount)), 0)
-                        FROM transactions t
-                        WHERE t.month = ? AND t.is_reversal = 0
-                          AND t.amount < 0
-                          AND t.category IN ({placeholders})""",
-                    [month] + list(leisure_category_ids),
-                ).fetchone()
-            else:
-                leisure_row = conn.execute(
-                    "SELECT 0.0"
-                ).fetchone()
+        # Income/expenses/leisure/by_category use prorated amounts.
+        total_income, total_expenses, by_category = self._allocated_month_totals(month)
+        if leisure_category_ids:
+            leisure_txs = self.get_all_transactions_for_rules()
+            leisure_month = [
+                t for t in self.expand_allocations(leisure_txs)
+                if t.get("month") == month and not t.get("is_reversal")
+                and t["amount"] < 0 and t.get("category") in set(leisure_category_ids)
+            ]
+            leisure_spent = round(sum(abs(t["amount"]) for t in leisure_month), 2)
+        else:
+            leisure_spent = 0.0
 
-            by_category = conn.execute("""
-                SELECT category, SUM(amount) as total, COUNT(*) as count
-                FROM transactions
-                WHERE month = ? AND is_reversal = 0
-                GROUP BY category
-                ORDER BY total ASC
-            """, (month,)).fetchall()
-
-        income = round(agg[1] or 0.0, 2)
-        expenses = round(abs(agg[2] or 0.0), 2)
-        savings = round(income - expenses, 2)
-        first_date = agg[5]
-        last_date = agg[6]
+        first_date = real[3]
+        last_date = real[4]
 
         # days_of_data: span of dates in this month's data
         days_of_data = 0
@@ -585,24 +573,21 @@ class SqliteStore:
 
         return {
             "month": month,
-            "tx_count": agg[0] or 0,
-            "total_income": income,
-            "total_expenses": expenses,
-            "net_savings": savings,
-            "drew_from_savings": savings < 0,
-            "savings_rate": round(savings / income * 100, 1) if income > 0 else 0.0,
-            "min_balance": round(agg[3] or 0.0, 2),
-            "max_balance": round(agg[4] or 0.0, 2),
+            "tx_count": real[0] or 0,
+            "total_income": total_income,
+            "total_expenses": round(abs(total_expenses), 2),
+            "net_savings": round(total_income - abs(total_expenses), 2),
+            "drew_from_savings": (total_income - abs(total_expenses)) < 0,
+            "savings_rate": round((total_income - abs(total_expenses)) / total_income * 100, 1) if total_income > 0 else 0.0,
+            "min_balance": round(real[1], 2) if real[1] is not None else None,
+            "max_balance": round(real[2], 2) if real[2] is not None else None,
             "last_balance": round(last_row[0], 2) if last_row else None,
             "last_balance_date": last_row[1] if last_row else None,
-            "leisure_spent": round(leisure_row[0] or 0.0, 2),
+            "leisure_spent": leisure_spent,
             "days_of_data": days_of_data,
             "first_date": first_date,
             "last_date": last_date,
-            "by_category": [
-                {"category": r[0], "total": round(r[1], 2), "count": r[2]}
-                for r in by_category
-            ],
+            "by_category": by_category,
         }
 
     def get_uncategorized_by_clean_description(self) -> list[dict]:
@@ -651,6 +636,7 @@ class SqliteStore:
         with self._connect() as conn:
             tx_count = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
             import_count = conn.execute("SELECT COUNT(*) FROM imports").fetchone()[0]
+            conn.execute("DELETE FROM expense_allocations")
             conn.execute("DELETE FROM transactions")
             conn.execute("DELETE FROM imports")
         return {"deleted_transactions": tx_count, "deleted_imports": import_count}
@@ -752,3 +738,142 @@ class SqliteStore:
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
         return conn
+
+    # ------------------------------------------------------------------
+    # Expense proration — spread a one-off expense over several months
+    # ------------------------------------------------------------------
+    # Real transactions are never modified: allocations store which months
+    # each expense should be attributed to. Aggregations (summaries, health,
+    # trends) expand the expense into equal monthly fragments; the raw
+    # movements list (balances, counts, dates) keeps showing bank reality.
+
+    def get_transaction(self, tx_id: str) -> dict | None:
+        """Returns a single transaction (id, amount, dates, description) or None."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT id, bank_id, date, description, stripped_description,
+                          clean_description, clean_description_source, amount, balance,
+                          currency, is_reversal, category, subcategory, month, year
+                   FROM transactions WHERE id = ?""",
+                (tx_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_allocations(self) -> dict[str, list[str]]:
+        """Returns {transaction_id: [month, ...]} for every expense proration."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT transaction_id, months FROM expense_allocations").fetchall()
+        return {r["transaction_id"]: json.loads(r["months"]) for r in rows}
+
+    def set_allocation(self, transaction_id: str, months: list[str]) -> None:
+        """Create or replace the proration for a transaction (upsert)."""
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO expense_allocations (transaction_id, months)
+                   VALUES (?, ?)
+                   ON CONFLICT(transaction_id) DO UPDATE SET
+                       months     = excluded.months,
+                       updated_at = datetime('now')""",
+                (transaction_id, json.dumps(months)),
+            )
+
+    def delete_allocation(self, transaction_id: str) -> bool:
+        """Remove a proration. Returns True if one was deleted."""
+        with self._connect() as conn:
+            result = conn.execute(
+                "DELETE FROM expense_allocations WHERE transaction_id = ?", (transaction_id,)
+            )
+        return result.rowcount > 0
+
+    def get_similar_transactions(self, tx_id: str, limit: int = 10) -> list[dict]:
+        """
+        Past expenses with the same label (COALESCE(clean_description, description))
+        as the given transaction, excluding itself, newest first, each with its
+        proration state if any.
+        """
+        with self._connect() as conn:
+            base = conn.execute(
+                "SELECT id, COALESCE(clean_description, description) AS label FROM transactions WHERE id = ?",
+                (tx_id,),
+            ).fetchone()
+            if base is None:
+                return []
+            rows = conn.execute(
+                """SELECT t.id, t.date, t.description, t.clean_description, t.amount,
+                          ea.months AS proration_months
+                   FROM transactions t
+                   LEFT JOIN expense_allocations ea ON ea.transaction_id = t.id
+                   WHERE t.id != ?
+                     AND t.is_reversal = 0
+                     AND t.amount < 0
+                     AND COALESCE(t.clean_description, t.description) = ?
+                   ORDER BY t.date DESC, t.rowid DESC
+                   LIMIT ?""",
+                (tx_id, base["label"], limit),
+            ).fetchall()
+        items = []
+        for r in rows:
+            item = dict(r)
+            item["proration_months"] = json.loads(item["proration_months"]) if item["proration_months"] else None
+            items.append(item)
+        return items
+
+    def expand_allocations(self, transactions: list[dict]) -> list[dict]:
+        """
+        Replace prorated expenses with one fragment per assigned month for
+        aggregation purposes. Returns a new list; the input is not modified.
+
+        Split keeps the total exact to the cent: every fragment gets base =
+        round(total / n) and the last fragment absorbs the rounding remainder.
+        """
+        allocations = self.get_allocations()
+        if not allocations:
+            return transactions
+        expanded: list[dict] = []
+        for tx in transactions:
+            months = allocations.get(tx["id"])
+            if not months or tx["amount"] >= 0 or tx.get("is_reversal"):
+                expanded.append(tx)
+                continue
+            n = len(months)
+            if n <= 1:
+                expanded.append(tx)
+                continue
+            total = round(abs(float(tx["amount"])), 2)
+            base = round(total / n, 2)
+            for i, m in enumerate(months):
+                frag = dict(tx)
+                frag["amount"] = round(-(total - base * (n - 1)), 2) if i == n - 1 else -base
+                frag["date"] = f"{m}-01"
+                frag["month"] = m
+                frag["year"] = int(m[:4])
+                frag["prorated"] = True
+                expanded.append(frag)
+        return expanded
+
+    def _allocated_month_totals(self, month: str) -> tuple[float, float, list[dict]]:
+        """
+        Income/expenses/by_category for one month, expenses-reality adjusted by
+        prorations. by_category 'count' counts fragments (a prorated expense
+        contributes to each assigned month).
+        """
+        all_txs = self.get_all_transactions_for_rules()
+        expanded = self.expand_allocations(all_txs)
+        month_txs = [
+            t for t in expanded
+            if t.get("month") == month and not t.get("is_reversal")
+        ]
+        total_income = round(sum(t["amount"] for t in month_txs if t["amount"] > 0), 2)
+        total_expenses = round(-sum(t["amount"] for t in month_txs if t["amount"] < 0), 2)
+
+        by_cat: dict[str, dict] = {}
+        for t in month_txs:
+            slot = by_cat.setdefault(t.get("category"), {"total": 0.0, "count": 0})
+            slot["total"] += t["amount"]
+            slot["count"] += 1
+        rows = [
+            {"category": cat, "total": round(v["total"], 2), "count": v["count"]}
+            for cat, v in by_cat.items()
+        ]
+        rows.sort(key=lambda r: r["total"])
+        return total_income, total_expenses, rows

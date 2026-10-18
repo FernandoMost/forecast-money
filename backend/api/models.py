@@ -25,8 +25,8 @@ class MonthlySummary(BaseModel):
     total_expenses: float
     net_savings: float
     savings_rate: float
-    min_balance: float
-    max_balance: float
+    min_balance: float | None          # None for months with no real movements (proration-only)
+    max_balance: float | None
     by_category: list[CategoryBreakdown]
 
 
@@ -87,7 +87,7 @@ class Transaction(BaseModel):
     category_source: str | None
     month: str
     year: int
-
+    proration_months: list[str] | None = None   # set when the expense is spread over months
 
 class TransactionList(BaseModel):
     total: int          # total matching rows (unpaginated)
@@ -316,8 +316,8 @@ class MonthSummaryForDashboard(BaseModel):
     net_savings: float
     drew_from_savings: bool
     savings_rate: float
-    min_balance: float
-    max_balance: float
+    min_balance: float | None          # None for months with no real movements (proration-only)
+    max_balance: float | None
     last_balance: float | None          # balance of the last transaction in this month
     last_balance_date: str | None       # date of that transaction (YYYY-MM-DD)
     leisure_spent: float                # sum of all categories with role='leisure'
@@ -359,3 +359,41 @@ class BackupExportRequest(BaseModel):
 class BackupRestoreResponse(BaseModel):
     restored: list[str]                # relative paths of the restored DBs
     previous_backup: str | None        # dir name where the old data/ was moved
+
+
+# ---------------------------------------------------------------------------
+# Expense proration
+# ---------------------------------------------------------------------------
+
+class ProrationRequest(BaseModel):
+    months: list[str] = Field(min_length=2, max_length=36)
+
+
+class TransactionContext(BaseModel):
+    id: str
+    date: str
+    description: str                   # COALESCE(clean_description, description)
+    amount: float
+    month: str
+    is_reversal: bool
+
+
+class SimilarTransactionItem(BaseModel):
+    id: str
+    date: str
+    description: str                   # COALESCE(clean_description, description)
+    amount: float
+    months: list[str] | None = None    # proration months if this past expense is prorated
+
+
+class ProrationContextResponse(BaseModel):
+    transaction: TransactionContext
+    months: list[str] | None           # this tx's assigned months (null = not prorated)
+    monthly_amount: float | None       # equal share per month (backend-computed)
+    similar: list[SimilarTransactionItem]
+
+
+class ProrationResponse(BaseModel):
+    transaction_id: str
+    months: list[str]
+    monthly_amount: float

@@ -13,6 +13,7 @@
 | `api/description_rules.py` | Description rules CRUD + suggestions + strip config |
 | `api/category_rules.py` | Category rules CRUD + category suggestion engine |
 | `api/backup.py` | AES-256 encrypted backup export/restore (auth.db + shared.db + users/*.db) |
+| `api/prorations.py` | Expense proration CRUD (spread one-off expenses across months) |
 | `api/deps.py` | Settings, `get_store()`, `get_shared_store()` |
 | `api/models.py` | Pydantic request/response models |
 | `db/sqlite_store.py` | Per-user DB — schema source of truth |
@@ -56,6 +57,9 @@ All paths prefixed with `/api/v1`. All require auth — `get_store` depends on `
 | `POST` | `/category-suggestions/dismiss`, `/apply` | hide / assign category (+ optional `create_rule`) |
 | `POST` | `/backup/export` | `{password}` → AES-256 zip download (auth.db, shared.db, users/*.db) |
 | `POST` | `/backup/restore` | multipart `file` + `password` → full replace, auto-backups current `data/` |
+| `GET` | `/transactions/{id}/proration` | modal context: tx + allocation + similar past expenses |
+| `PUT` | `/transactions/{id}/proration` | `{months:[YYYY-MM]}` — 422 on income/reversal/<2 months; returns `monthly_amount` |
+| `DELETE` | `/transactions/{id}/proration` | idempotent 204 |
 
 ## `get_transactions()` signature
 ```python
@@ -106,6 +110,18 @@ categories:        id (TEXT PK), name, parent_id, color, role, position, created
 category_rules:    id, category, subcategory, patterns (JSON array), position, created_at, updated_at
 ```
 `categories.role` (income/needs/wants/leisure/fixed/subscriptions/savings/other) drives the health engine.
+
+## Schema — expense_allocations (per-user db)
+```
+transaction_id (PK REFERENCES transactions), months (JSON "YYYY-MM" array), created_at, updated_at
+```
+Proration semantics: only expenses (amount<0, no reversal); 100% redistributed equally across
+selected months; fragments are computed by `expand_allocations()` at aggregation time — the
+transactions table keeps real amounts/balances. Applied in `get_monthly_summary()`,
+`get_dashboard_month_summary()` (totals + by_category + leisure) and `HealthEngine.analyze()`.
+`tx_count` and `min/max/last_balance` stay real; summaries return `NULL` min/max balance for
+proration-only months. `get_transactions()` items include `proration_months`.
+Cleanup on `delete_import()` / `clear_all()`.
 
 ## Key behaviours
 - `bulk_update_categories()` preserves `source='manual'` rows — uses CASE WHEN
