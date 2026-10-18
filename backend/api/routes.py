@@ -60,7 +60,7 @@ from categorizer.description_cleaner import reload_rules as reload_clean_rules
 from db.sqlite_store import SqliteStore
 from db.shared_store import SharedStore
 from parser.bank_parser import BankParser
-from parser.normalizer import normalize
+from parser.normalizer import normalize_many
 from rules.health_engine import HealthEngine
 
 router = APIRouter()
@@ -101,7 +101,7 @@ async def upload_statement(
 
         strip_prefixes = parser.strip_description_prefixes
         strip_config = store.get_strip_config()
-        normalized = [normalize(raw, meta.bank_id, strip_prefixes) for raw in result.transactions]
+        normalized = normalize_many(result.transactions, meta.bank_id, strip_prefixes)
 
         if use_ai:
             ai = AiCategorizer(cache_path=settings.data_dir / "category_cache.db", store=store)

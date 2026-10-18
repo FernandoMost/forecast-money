@@ -73,6 +73,7 @@ parsing:
   date_format: "%Y-%m-%d"           # Python strptime string
   amount_strip_pattern: '\s'        # regex chars to strip before float conversion
   amount_decimal_separator: "."     # "." for English, "," for Spanish/EU
+  negative_sign_chars: "-"          # optional; default "-"; include bank-specific signs (e.g. Unicode −)
   reversal_prefix: "REVERSAL"       # transactions starting with this are flagged
   min_valid_columns: 3              # rows with fewer non-empty cols are skipped
 ```

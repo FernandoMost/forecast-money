@@ -68,6 +68,30 @@ def normalize(
     }
 
 
+def normalize_many(
+    transactions: list[RawTransaction],
+    bank_id: str,
+    strip_description_prefixes: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Normalize a statement while preserving identical transactions within it.
+
+    The first occurrence keeps the usual stable ID. Further rows with the same
+    identity get deterministic occurrence IDs, so identical legitimate charges
+    are retained while re-importing the same statement remains idempotent.
+    """
+    occurrences: dict[str, int] = {}
+    normalized = []
+    for raw in transactions:
+        tx = normalize(raw, bank_id, strip_description_prefixes)
+        occurrence = occurrences.get(tx["id"], 0)
+        occurrences[tx["id"]] = occurrence + 1
+        if occurrence:
+            duplicate_key = f"{tx['id']}|occurrence:{occurrence}"
+            tx["id"] = hashlib.sha256(duplicate_key.encode()).hexdigest()[:32]
+        normalized.append(tx)
+    return normalized
+
+
 def _make_id(bank_id: str, date_op: date, description: str, amount: float) -> str:
     """Deterministic ID so re-importing the same file doesn't create duplicates."""
     raw = f"{bank_id}|{date_op.isoformat()}|{description}|{amount:.2f}"

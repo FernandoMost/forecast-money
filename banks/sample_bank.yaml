@@ -74,6 +74,10 @@ parsing:
   # "." for English/US format (1234.56), "," for Spanish/EU format (1234,56)
   amount_decimal_separator: "."
 
+  # Optional characters that mark a negative amount. Defaults to ASCII hyphen.
+  # Add Unicode minus (−) if your bank uses it: negative_sign_chars: "-−"
+  negative_sign_chars: "-"
+
   # Transactions whose Description starts with this prefix are flagged as reversals.
   # In sample_bank.csv, row 18 ("REVERSAL SUPERMARKET …") demonstrates this.
   reversal_prefix: "REVERSAL"

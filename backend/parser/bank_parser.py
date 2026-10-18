@@ -275,14 +275,19 @@ class BankParser:
 
         Examples:
           Spanish locale (decimal=','): '-14,50€' -> -14.50, '3.411,06€' -> 3411.06
+          Configured minus signs (e.g. U+2212): '−14,50' -> -14.50
           English locale (decimal='.'): '-14.50'  -> -14.50, '1,234.56' -> 1234.56
         """
         parse_cfg = self._cfg["parsing"]
         strip_pat = parse_cfg["amount_strip_pattern"]
         dec_sep = parse_cfg["amount_decimal_separator"]
+        negative_sign_chars = parse_cfg.get("negative_sign_chars", "-")
 
-        is_negative = raw.strip().startswith("-")
-        cleaned = re.sub(strip_pat, "", raw.replace("-", ""))
+        is_negative = raw.strip().startswith(tuple(negative_sign_chars))
+        cleaned = raw
+        for sign in negative_sign_chars:
+            cleaned = cleaned.replace(sign, "")
+        cleaned = re.sub(strip_pat, "", cleaned)
         # Keep only digits and the decimal separator
         keep = re.escape(dec_sep)
         cleaned = re.sub(rf"[^0-9{keep}]", "", cleaned)

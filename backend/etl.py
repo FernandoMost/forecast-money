@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from parser.bank_parser import BankParser
-from parser.normalizer import normalize
+from parser.normalizer import normalize_many
 from categorizer.rule_categorizer import categorize_transaction
 from categorizer.ai_categorizer import AiCategorizer
 from db.sqlite_store import SqliteStore
@@ -57,7 +57,7 @@ def run_etl(
     # ---------------------------------------------------------------
     # 2. Normalize
     # ---------------------------------------------------------------
-    normalized = [normalize(raw, meta.bank_id, parser.strip_description_prefixes) for raw in result.transactions]
+    normalized = normalize_many(result.transactions, meta.bank_id, parser.strip_description_prefixes)
     print(f"[ETL] Normalized {len(normalized)} transactions.")
 
     # ---------------------------------------------------------------

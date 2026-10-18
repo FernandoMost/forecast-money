@@ -14,8 +14,8 @@ file:
 
 sheet:
   index: 0                     # 0-based sheet index to read
-  header_row: 8                # 1-based row number where column headers live
-  data_start_row: 9            # 1-based row number where transactions begin
+  header_row: 7                # 1-based row number where column headers live
+  data_start_row: 8            # 1-based row number where transactions begin
   # Metadata lives above header_row; we extract it for context
   metadata:
     account_label_row: 1
@@ -31,19 +31,21 @@ sheet:
 
 columns:
   # Map logical field names to 1-based column indices in the spreadsheet
-  date_operation: 1            # "Fecha operación"  — DD/MM/YYYY string
-  date_value: 2                # "Fecha valor"       — DD/MM/YYYY string
-  description: 3               # "Concepto"
-  amount: 4                    # "Importe"           — e.g. "-14,50€"
-  balance: 5                   # "Saldo"             — e.g. "3.411,06€"
-  currency: 6                  # "Divisa"            — e.g. "EUR"
+  date_operation: 1            # "Transaction date" — DD/MM/YYYY string
+  date_value: 2                # "Value date"       — DD/MM/YYYY string
+  description: 3               # "Description"
+  amount: 4                    # "Amount"             — e.g. "−14,50"
+  balance: 5                   # "Balance"            — e.g. "4.952,79"
+  currency: 6                  # "Currency"          — e.g. "EUR"
 
 parsing:
   date_format: "%d/%m/%Y"
-  # Regex to strip non-numeric chars (except minus/comma) before float conversion
+  # Santander now exports U+2212 (Unicode minus) for negative amounts.
+  negative_sign_chars: "-−"
+  # Strip currency, spaces and thousands separator before float conversion.
   amount_strip_pattern: '[€\s\.]'
   amount_decimal_separator: ","
-  # Rows whose Concepto starts with this prefix are reversals/cancellations
+  # Rows whose Description starts with this prefix are reversals/cancellations
   reversal_prefix: "ANULACION"
   # Minimum non-null columns for a row to be considered a valid transaction
   min_valid_columns: 4
