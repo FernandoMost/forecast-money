@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   api,
   CategoryWithChildren,
@@ -8,9 +8,11 @@ import {
   CategoryRole,
   CategoryRuleItem,
   CategorySuggestionGroup,
+  ReviewKeyword,
+  ReviewTransactionItem,
 } from "@/lib/api";
 import { useT } from "@/lib/i18n";
-import { formatDate } from "@/lib/utils";
+import { formatEur, formatDate, formatDateSlash } from "@/lib/utils";
 import { useCategoryTree, invalidateCategoryCache } from "@/components/CategoryTree";
 
 // ─── Role metadata ──────────────────────────────────────────────────────────
@@ -884,24 +886,296 @@ function CategoriesTab() {
   );
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ─── Review Tab — opaque marketplace purchases (Vinted / Amazon / PayPal…) ───
 
-type Tab = "categories" | "rules" | "suggestions";
+const REVIEW_PAGE = 50;
+
+function ReviewTab({ onCountRefresh }: { onCountRefresh: () => void }) {
+  const { t, locale } = useT();
+  const { categories, catLabel, subLabel } = useCategoryTree();
+  const intlLocale = locale === "es" ? "es-ES" : "en-GB";
+  const [items, setItems] = useState<ReviewTransactionItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [keywords, setKeywords] = useState<ReviewKeyword[]>([]);
+  const [loadingKeywords, setLoadingKeywords] = useState(true);
+  const [newKeyword, setNewKeyword] = useState("");
+  const [keywordError, setKeywordError] = useState<string | null>(null);
+  const [selection, setSelection] = useState<Record<string, { category: string; subcategory: string }>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+
+  const load = useCallback(async (offset = 0, append = false) => {
+    if (offset === 0) setLoading(true); else setLoadingMore(true);
+    try {
+      const data = await api.reviewTransactions(REVIEW_PAGE, offset);
+      setTotal(data.total);
+      setItems((prev) => (append ? [...prev, ...data.items] : data.items));
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, []);
+
+  const loadKeywords = useCallback(async () => {
+    try {
+      setKeywords(await api.reviewKeywords());
+    } catch { /* ignore */ }
+    setLoadingKeywords(false);
+  }, []);
+
+  useEffect(() => { loadKeywords(); }, [loadKeywords]);
+  useEffect(() => { load(0); }, [load]);
+
+  // Adding/removing a keyword widens or narrows the queue → reload it
+  const keywordsReady = useRef(false);
+  useEffect(() => {
+    if (!keywordsReady.current) { keywordsReady.current = true; return; }
+    load(0);
+  }, [keywords, load]);
+
+  function getSel(id: string) {
+    return selection[id] ?? { category: "", subcategory: "" };
+  }
+
+  function updateSel(id: string, patch: Partial<{ category: string; subcategory: string }>) {
+    setSelection((prev) => ({ ...prev, [id]: { ...getSel(id), ...patch } }));
+  }
+
+  function removeFromList(id: string) {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    setTotal((n) => Math.max(0, n - 1));
+    onCountRefresh();  // badge reloads from the API (not optimistic)
+  }
+
+  async function applyReview(
+    tx: ReviewTransactionItem,
+    category: string,
+    subcategory: string,
+  ) {
+    setSaving((s) => ({ ...s, [tx.id]: true }));
+    try {
+      // PATCH marks category_source='manual' → leaves the queue and survives recategorizations
+      await api.patchTransaction(tx.id, {
+        category,
+        subcategory: subcategory || null,
+      });
+      removeFromList(tx.id);
+    } catch { /* keep the row on error */ }
+    finally {
+      setSaving((s) => {
+        const copy = { ...s };
+        delete copy[tx.id];
+        return copy;
+      });
+    }
+  }
+
+  async function addKeyword() {
+    const kw = newKeyword.trim();
+    if (!kw || loadingKeywords) return;
+    setKeywordError(null);
+    try {
+      await api.addReviewKeyword(kw);
+      setNewKeyword("");
+      await loadKeywords();
+    } catch {
+      setKeywordError(t("reviewTab.errorAddKeyword"));
+    }
+  }
+
+  async function deleteKeyword(id: number) {
+    await api.deleteReviewKeyword(id).catch(() => {});
+    await loadKeywords();
+  }
+
+  if (loading) {
+    return <p className="text-sm text-gray-400 py-8 text-center">{t("categories.loading")}</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Keywords */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">
+          {t("reviewTab.keywordsTitle")}
+        </h3>
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {keywords.map((k) => (
+            <span
+              key={k.id}
+              className="inline-flex items-center gap-1 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-full pl-2.5 pr-1 py-1"
+            >
+              {k.keyword}
+              <button
+                onClick={() => deleteKeyword(k.id)}
+                title={t("reviewTab.removeKeyword")}
+                className="rounded-full text-gray-400 hover:text-red-500 px-1"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {keywords.length === 0 && !loadingKeywords && (
+            <span className="text-xs text-gray-400">{t("reviewTab.noKeywords")}</span>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={newKeyword}
+            onChange={(e) => setNewKeyword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addKeyword(); } }}
+            placeholder={t("reviewTab.keywordPlaceholder")}
+            className={inputCls + " text-xs py-1.5 flex-1"}
+          />
+          <button
+            onClick={addKeyword}
+            disabled={!newKeyword.trim()}
+            className="px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 shrink-0"
+          >
+            {t("reviewTab.addKeyword")}
+          </button>
+        </div>
+        {keywordError && <p className="text-xs text-red-600 dark:text-red-400 mt-1.5">{keywordError}</p>}
+      </div>
+
+      {/* Queue */}
+      <p className="text-xs text-gray-400 dark:text-gray-500 px-1">{t("reviewTab.hint")}</p>
+
+      {items.length === 0 ? (
+        <div className="text-center py-16 text-gray-400 dark:text-gray-500">
+          <p className="text-2xl mb-2">✓</p>
+          <p className="text-sm">{t("reviewTab.empty")}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((tx) => {
+            const sel = getSel(tx.id);
+            const isSaving = saving[tx.id] ?? false;
+            const subcats = categories.find((c) => c.id === sel.category)?.subcategories ?? [];
+            const current = tx.category
+              ? tx.subcategory
+                ? `${catLabel(tx.category)} / ${subLabel(tx.subcategory)}`
+                : catLabel(tx.category)
+              : t("reviewTab.noneCategory");
+            return (
+              <div
+                key={tx.id}
+                className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3 shadow-sm"
+              >
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 w-24 tabular-nums">
+                    {formatDateSlash(tx.date, intlLocale)}
+                  </span>
+                  <span className="flex-1 min-w-0 truncate" title={tx.raw_description}>
+                    {tx.description}
+                  </span>
+                  {tx.proration_months && (
+                    <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 text-[10px] font-semibold">
+                      ÷{tx.proration_months.length}
+                    </span>
+                  )}
+                  <span className={`shrink-0 text-xs font-mono font-medium tabular-nums w-20 text-right ${tx.amount < 0 ? "text-red-600 dark:text-red-400" : "text-green-600"}`}>
+                    {formatEur(tx.amount)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 mt-2 pl-1">
+                  <span className="text-[11px] text-gray-400 dark:text-gray-500 shrink-0">
+                    {t("reviewTab.current")}:
+                    <span className="ml-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium">
+                      {current}
+                    </span>
+                  </span>
+                  <div className="flex-1" />
+                  {tx.category && (
+                    <button
+                      onClick={() => applyReview(tx, tx.category!, tx.subcategory ?? "")}
+                      disabled={isSaving}
+                      title={t("reviewTab.keepTitle")}
+                      className="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-green-50 dark:hover:bg-green-900/20 hover:border-green-300 disabled:opacity-40 shrink-0"
+                    >
+                      {isSaving ? "…" : t("reviewTab.keep")}
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <select
+                    className={inputCls + " text-xs py-1.5"}
+                    value={sel.category}
+                    onChange={(e) => updateSel(tx.id, { category: e.target.value, subcategory: "" })}
+                    disabled={isSaving}
+                  >
+                    <option value="">— {t("reviewTab.pickCategory")} —</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <select
+                    className={inputCls + " text-xs py-1.5"}
+                    value={sel.subcategory}
+                    onChange={(e) => updateSel(tx.id, { subcategory: e.target.value })}
+                    disabled={isSaving || !sel.category || subcats.length === 0}
+                  >
+                    <option value="">— {t("reviewTab.pickSubcategory")} —</option>
+                    {subcats.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => applyReview(tx, sel.category, sel.subcategory)}
+                    disabled={isSaving || !sel.category}
+                    className="px-3 py-1 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40"
+                  >
+                    {isSaving ? "…" : t("reviewTab.assign")}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Load more */}
+      {items.length < total && (
+        <button
+          onClick={() => load(items.length, true)}
+          disabled={loadingMore}
+          className="w-full py-2.5 text-sm text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
+        >
+          {loadingMore ? "…" : t("reviewTab.loadMore")}
+          <span className="ml-1 text-xs text-gray-400">({total - items.length})</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+type Tab = "categories" | "rules" | "suggestions" | "review";
 
 export default function CategoriesPage() {
   const { t } = useT();
   const [tab, setTab] = useState<Tab>("categories");
   const [suggestionCount, setSuggestionCount] = useState<number | null>(null);
+  const [reviewCount, setReviewCount] = useState<number | null>(null);
 
   // Load suggestion badge count on mount
   useEffect(() => {
     api.categorySuggestions(1).then((res) => setSuggestionCount(res.uncovered_total)).catch(() => {});
+    api.reviewTransactions(1).then((res) => setReviewCount(res.total)).catch(() => {});
   }, []);
+
+  // Badge reloads from the API (not optimistic) after each review action
+  function refreshReviewCount() {
+    api.reviewTransactions(1).then((res) => setReviewCount(res.total)).catch(() => {});
+  }
 
   const tabs: { key: Tab; label: string; badge?: number | null }[] = [
     { key: "categories", label: t("categoryRules.tabCategories") },
     { key: "rules",      label: t("categoryRules.tabRules") },
     { key: "suggestions", label: t("categoryRules.tabSuggestions"), badge: suggestionCount },
+    { key: "review",     label: t("categoryRules.tabReview"), badge: reviewCount },
   ];
 
   return (
@@ -938,6 +1212,7 @@ export default function CategoriesPage() {
       {tab === "categories" && <CategoriesTab />}
       {tab === "rules" && <CategoryRulesTab />}
       {tab === "suggestions" && <CategorySuggestionsTab />}
+      {tab === "review" && <ReviewTab onCountRefresh={refreshReviewCount} />}
     </div>
   );
 }

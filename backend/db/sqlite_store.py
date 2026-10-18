@@ -818,6 +818,71 @@ class SqliteStore:
             items.append(item)
         return items
 
+    def get_review_transactions(self, keywords: list[str], limit: int = 50, offset: int = 0) -> dict:
+        """
+        Expenses pending of manual category review because the bank description
+        corresponds to an opaque marketplace (Vinted, Amazon, Wallapop, PayPal…):
+        the real purchase category cannot be inferred from the statement.
+
+        Matches any keyword (case-insensitive LIKE) against the label used for
+        matching elsewhere (clean_description → stripped → description).
+        Already manual reviews (category_source='manual') leave the queue —
+        recategorize never touches them.
+        """
+        usable = [k for k in keywords if k and k.strip()]
+        if not usable:
+            return {"total": 0, "items": []}
+
+        conditions: list[str] = [
+            "t.is_reversal = 0",
+            "t.amount < 0",
+            "(t.category_source IS NULL OR t.category_source != 'manual')",
+        ]
+        params: list[Any] = []
+        or_clauses = []
+        for kw in usable:
+            or_clauses.append(
+                "LOWER(COALESCE(t.clean_description, t.stripped_description, t.description)) LIKE ?"
+            )
+            params.append(f"%{kw.strip().lower()}%")
+        conditions.append("(" + " OR ".join(or_clauses) + ")")
+
+        where = "WHERE " + " AND ".join(conditions)
+
+        with self._connect() as conn:
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM transactions t {where}",
+                params,
+            ).fetchone()[0]
+            rows = conn.execute(
+                f"""
+                SELECT t.id, t.date, t.description, t.stripped_description,
+                       t.clean_description, t.amount, t.balance,
+                       t.category, t.subcategory, t.category_source,
+                       ea.months AS proration_months
+                FROM transactions t
+                LEFT JOIN expense_allocations ea ON ea.transaction_id = t.id
+                {where}
+                ORDER BY t.date DESC, t.rowid DESC
+                LIMIT ? OFFSET ?
+                """,
+                params + [limit, offset],
+            ).fetchall()
+
+        cols = ["id", "date", "description", "stripped_description",
+                "clean_description", "amount", "balance",
+                "category", "subcategory", "category_source", "proration_months"]
+        items: list[dict] = []
+        for r in rows:
+            item = dict(zip(cols, r))
+            if item.get("proration_months"):
+                try:
+                    item["proration_months"] = json.loads(item["proration_months"])
+                except (json.JSONDecodeError, TypeError):
+                    item["proration_months"] = None
+            items.append(item)
+        return {"total": total, "items": items}
+
     def expand_allocations(self, transactions: list[dict]) -> list[dict]:
         """
         Replace prorated expenses with one fragment per assigned month for

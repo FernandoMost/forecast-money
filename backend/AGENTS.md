@@ -14,6 +14,7 @@
 | `api/category_rules.py` | Category rules CRUD + category suggestion engine |
 | `api/backup.py` | AES-256 encrypted backup export/restore (auth.db + shared.db + users/*.db) |
 | `api/prorations.py` | Expense proration CRUD (spread one-off expenses across months) |
+| `api/review.py` | Category review queue for opaque marketplace purchases (Vinted/Amazon/…) |
 | `api/deps.py` | Settings, `get_store()`, `get_shared_store()` |
 | `api/models.py` | Pydantic request/response models |
 | `db/sqlite_store.py` | Per-user DB — schema source of truth |
@@ -60,6 +61,8 @@ All paths prefixed with `/api/v1`. All require auth — `get_store` depends on `
 | `GET` | `/transactions/{id}/proration` | modal context: tx + allocation + similar past expenses |
 | `PUT` | `/transactions/{id}/proration` | `{months:[YYYY-MM]}` — 422 on income/reversal/<2 months; returns `monthly_amount` |
 | `DELETE` | `/transactions/{id}/proration` | idempotent 204 |
+| `GET` | `/review-transactions` `?limit offset` | opaque-purchase review queue; `total` = tab badge |
+| `GET` · `POST` · `DELETE` | `/review-keywords` (…`/{id}`) | ambiguous-merchant keywords CRUD (Vinted/Amazon/… seed on startup) |
 
 ## `get_transactions()` signature
 ```python
@@ -110,6 +113,14 @@ categories:        id (TEXT PK), name, parent_id, color, role, position, created
 category_rules:    id, category, subcategory, patterns (JSON array), position, created_at, updated_at
 ```
 `categories.role` (income/needs/wants/leisure/fixed/subscriptions/savings/other) drives the health engine.
+
+## Schema — ambiguous_keywords (shared.db)
+```
+id (INTEGER PK), keyword (unique, uppercased), created_at
+```
+Keywords mark opaque marketplace purchases for the review queue; default seed
+(VINTED, AMAZON, WALLAPOP, PAYPAL) inserted at startup when the table is empty.
+Review action = `PATCH /transactions/{id}` → `category_source='manual'` leaves the queue.
 
 ## Schema — expense_allocations (per-user db)
 ```

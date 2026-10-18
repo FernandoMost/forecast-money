@@ -180,7 +180,8 @@
     "prorateSave": "Prorate",
     "prorateBadge": "Prorated: {n} months × {amount}/month",
     "saving": "Saving…",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "proratePerMonthShort": "€/month"
   },
   "categories": {
     "title": "Categories",
@@ -439,43 +440,7 @@
     "stripCount": "time(s)"
   },
   "categoryRules": {
-    "tabCategories": "Categories",
-    "tabRules": "Rules",
-    "tabSuggestions": "Suggestions",
-    "rulesTitle": "Categorization rules",
-    "rulesSubtitle": "Evaluation order: first match wins. Applied after cleaning the description.",
-    "noRules": "No categorization rules yet. Create the first one.",
-    "newRule": "+ New rule",
-    "colPatterns": "Patterns (regex)",
-    "colCategory": "Category",
-    "colMatches": "Matches",
-    "applyAndRecategorize": "Apply & recategorize",
-    "applying": "Applying…",
-    "appliedSuccess": "{n} transactions recategorized.",
-    "edit": "Edit",
-    "delete": "Delete",
-    "save": "Save",
-    "saving": "Saving…",
-    "cancel": "Cancel",
-    "confirmDelete": "Delete this categorization rule?",
-    "fieldCategory": "Category",
-    "fieldSubcategory": "Subcategory",
-    "fieldPatterns": "Patterns",
-    "patternPlaceholder": "Pattern then Enter",
-    "errorNeedsCategory": "Select a category.",
-    "errorNeedsPattern": "Add at least one pattern.",
-    "suggestionsTitle": "Categorization suggestions",
-    "suggestionsSubtitle": "{count} groups with a clean description but no category assigned.",
-    "suggestionsEmpty": "No transactions with a clean description left uncategorized.",
-    "suggestionsCount": "{n} transaction(s) · last {date}",
-    "createRule": "Also create an automatic rule",
-    "apply": "Assign",
-    "applying2": "Assigning…",
-    "dismiss": "Dismiss",
-    "associateCategory": "Associate category",
-    "associateCategoryHint": "The associated category will take absolute priority over all other rules.",
-    "noAssociation": "No association",
-    "clearAssociation": "Remove association"
+    "tabReview": "Purchases"
   },
   "settings": {
     "title": "Settings",
@@ -500,5 +465,23 @@
     "errorPasswordMatch": "Passwords do not match.",
     "errorShortPassword": "Password must be at least 8 characters.",
     "errorNoFile": "Select a backup file."
+  },
+  "reviewTab": {
+    "hint": "Expenses through marketplaces (Vinted, Amazon, Wallapop, PayPal…) whose real product cannot be inferred from the bank statement. Assign the real category or confirm the current one; reviewed items are marked manual and stop showing up here.",
+    "keywordsTitle": "Opaque merchants (keywords)",
+    "keywordPlaceholder": "Keyword · e.g. ALIEXPRESS",
+    "addKeyword": "Add",
+    "removeKeyword": "Remove keyword",
+    "errorAddKeyword": "Could not add the keyword (already exists?).",
+    "noKeywords": "No keywords.",
+    "current": "Current",
+    "keep": "✓ Keep",
+    "keepTitle": "Confirm current category — marks it as manual",
+    "pickCategory": "Pick category",
+    "pickSubcategory": "Pick subcategory",
+    "assign": "Assign real category",
+    "noneCategory": "Uncategorized",
+    "empty": "No opaque purchases to review.",
+    "loadMore": "Load more"
   }
 }

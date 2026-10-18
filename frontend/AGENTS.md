@@ -14,7 +14,7 @@
 | `/trends` | `app/trends/page.tsx` | Trends view |
 | `/upload` | `app/upload/page.tsx` | Statement upload |
 | `/health` | `app/health/page.tsx` | Financial health score |
-| `/categories` | `app/categories/page.tsx` | Tabs: categories CRUD, category rules, category suggestions |
+| `/categories` | `app/categories/page.tsx` | Tabs: categories CRUD, category rules, category suggestions, opaque-purchase review |
 | `/rules` | `app/rules/page.tsx` | Description rules + suggestion/clean/strip tabs |
 | `/settings` | `app/settings/page.tsx` | Backup export/restore + local settings |
 | `/login` | `app/login/page.tsx` | Auth |
@@ -63,6 +63,8 @@ api.listImports() / deleteImport(id) / clearAllData()
 api.exportBackup(password) / api.restoreBackup(file, password)
 // Expense proration
 api.getProration(txId) / api.setProration(txId, months) / api.deleteProration(txId)
+// Review queue (opaque purchases) + keywords
+api.reviewTransactions(limit, offset) / api.reviewKeywords() / api.addReviewKeyword(kw) / api.deleteReviewKeyword(id)
 ```
 
 `TransactionList`: `{ total, amount_total, limit, offset, items[] }` — `total`/`amount_total` are full unpaginated counts.
@@ -94,6 +96,8 @@ Never render raw `YYYY-MM-DD` or `YYYY-MM` strings.
 - `meta: { align: "right" }` on `amount` and `balance`
 - Sticky bottom bar: `fixed bottom-0`, page body has `pb-16`
 - Amount column: `÷n` badge when `tx.proration_months` is set (tooltip with €/mes); `÷` icon button on expenses opens `ProrationModal` (year switcher ±1, 12 month chips, similar-past list). Saving calls `api.setProration`, updates `proration_months` in row state. Monthly-amount shown in UI is display-only division — the official value comes from the backend (`monthly_amount`).
+
+- `/categories` has 4 tabs; the **Compras** (review) tab badge reloads from `/review-transactions` after each action (not optimistic). Reviewing = `api.patchTransaction` (`category_source` becomes `'manual'`).
 
 ## Rules page — tabs
 - **Reglas**: description rules CRUD

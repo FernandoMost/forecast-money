@@ -66,6 +66,7 @@ docker-compose up
 - **Description cleaning** — normalize messy bank descriptions via rules or quick inline editor
 - **Month assignment** — move any transaction to a different accounting month (useful for salaries paid at month-end or recurring bills that straddle months)
 - **Expense proration** — spread one-off expenses (car insurance, annual taxes, water bills) across the months they belong to; summaries and health score use the monthly share
+- **Opaque-purchase review** — Vinted/Amazon/Wallapop/PayPal buys routed into a quick review queue to assign the real purchase category
 - **Financial health score** — 7 rules → 0-100 score with amber/red alerts
 - **Encrypted local backup** — export your entire environment as an AES-256 ZIP and move it to another machine without any cloud
 - **Multi-user** — per-user SQLite databases, shared rules and categories

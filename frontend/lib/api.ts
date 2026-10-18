@@ -485,6 +485,31 @@ export interface ProrationResponse {
   monthly_amount: number;
 }
 
+// --- Review (opaque marketplace purchases) types ---
+
+export interface ReviewTransactionItem {
+  id: string;
+  date: string;
+  description: string;
+  raw_description: string;
+  amount: number;
+  balance: number;
+  category: string | null;
+  subcategory: string | null;
+  category_source: string | null;
+  proration_months: string[] | null;
+}
+
+export interface ReviewListResponse {
+  total: number;
+  items: ReviewTransactionItem[];
+}
+
+export interface ReviewKeyword {
+  id: number;
+  keyword: string;
+}
+
 // --- Imports types ---
 
 export interface ImportMetadata {
@@ -652,4 +677,13 @@ export const api = {
     putJson<ProrationResponse>(`/transactions/${txId}/proration`, { months }),
   deleteProration: (txId: string) =>
     del<void>(`/transactions/${txId}/proration`),
+
+  // --- Category review (opaque marketplace purchases) ---
+  reviewTransactions: (limit = 50, offset = 0) =>
+    get<ReviewListResponse>(`/review-transactions?limit=${limit}&offset=${offset}`),
+  reviewKeywords: () => get<ReviewKeyword[]>("/review-keywords"),
+  addReviewKeyword: (keyword: string) =>
+    postJson<ReviewKeyword>("/review-keywords", { keyword }),
+  deleteReviewKeyword: (id: number) =>
+    del<{ deleted: boolean; id: number }>(`/review-keywords/${id}`),
 };

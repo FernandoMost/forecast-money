@@ -397,3 +397,34 @@ class ProrationResponse(BaseModel):
     transaction_id: str
     months: list[str]
     monthly_amount: float
+
+
+# ---------------------------------------------------------------------------
+# Category review (opaque marketplace purchases)
+# ---------------------------------------------------------------------------
+
+class ReviewTransactionItem(BaseModel):
+    id: str
+    date: str
+    description: str                   # clean ?? stripped ?? raw
+    raw_description: str
+    amount: float
+    balance: float
+    category: str | None
+    subcategory: str | None
+    category_source: str | None
+    proration_months: list[str] | None = None
+
+
+class ReviewListResponse(BaseModel):
+    total: int                         # pending count — drives the tab badge
+    items: list[ReviewTransactionItem]
+
+
+class ReviewKeyword(BaseModel):
+    id: int
+    keyword: str
+
+
+class ReviewKeywordCreateRequest(BaseModel):
+    keyword: str = Field(min_length=1, max_length=60)

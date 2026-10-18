@@ -85,6 +85,7 @@ python3 etl.py ../statement.xlsx --use-ai     # Ollama AI categorization
 | Bank file parsing | `backend/parser/bank_parser.py` |
 | Backup export/restore (AES-256 ZIP) | `backend/api/backup.py` |
 | Expense proration (spread over months) | `backend/api/prorations.py` + `sqlite_store.expand_allocations()` |
+| Opaque-purchase review queue | `backend/api/review.py` + `ambiga…` `ambiguous_keywords` (shared.db) |
 | Category/subcategory taxonomy | `categories` table in shared.db (seeded in `main.py`), served via `/api/v1/categories` |
 | Description cleaning logic | `backend/categorizer/description_cleaner.py` |
 | Dashboard page | `frontend/app/page.tsx` |

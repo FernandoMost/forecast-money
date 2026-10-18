@@ -25,6 +25,7 @@ from api.description_rules import router as description_rules_router
 from api.category_rules import router as category_rules_router
 from api.backup import router as backup_router
 from api.prorations import router as prorations_router
+from api.review import router as review_router
 from auth.routes import router as auth_router
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ app.include_router(description_rules_router, prefix="/api/v1")
 app.include_router(category_rules_router, prefix="/api/v1")
 app.include_router(backup_router, prefix="/api/v1")
 app.include_router(prorations_router, prefix="/api/v1")
+app.include_router(review_router, prefix="/api/v1")
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +164,14 @@ def startup_migrate_rules() -> None:
         if seeded:
             logger.info("Startup: seeded %d categories into shared.db", seeded)
 
-        # 3. Category rules: legacy YAML → DB
+        # 3. Ambiguous merchant keywords (Vinted/Amazon/... review queue seeds)
+        seeded_kw = shared.seed_ambiguous_keywords(
+            ["VINTED", "AMAZON", "WALLAPOP", "PAYPAL"]
+        )
+        if seeded_kw:
+            logger.info("Startup: seeded %d ambiguous merchant keywords into shared.db", seeded_kw)
+
+        # 4. Category rules: legacy YAML → DB
         cat_yaml_candidates = [
             Path(__file__).parent.parent / "config" / "category_rules.yaml",
             Path(__file__).parent / "config" / "category_rules.yaml",

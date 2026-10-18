@@ -98,6 +98,12 @@ class SharedStore:
                     clean_description TEXT NOT NULL UNIQUE,
                     dismissed_at      TEXT NOT NULL DEFAULT (datetime('now'))
                 );
+
+                CREATE TABLE IF NOT EXISTS ambiguous_keywords (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    keyword    TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
             """)
         self._migrate_schema()
 
@@ -112,6 +118,63 @@ class SharedStore:
                 conn.execute("ALTER TABLE description_rules ADD COLUMN category_id TEXT")
             if "subcategory_id" not in existing_cols:
                 conn.execute("ALTER TABLE description_rules ADD COLUMN subcategory_id TEXT")
+
+    # ------------------------------------------------------------------
+    # Ambiguous merchant keywords (opaque marketplaces: Vinted, Amazon, …)
+    # ------------------------------------------------------------------
+    # Purchases through marketplaces/PayPal cannot be categorized from the
+    # bank statement alone — the real purchase category differs per item.
+    # Keywords mark which transactions need a manual category review (see
+    # the "Compras" review tab). Shared across users like the other rules.
+
+    def seed_ambiguous_keywords(self, defaults: list[str]) -> int:
+        """Insert default keywords when the table is empty. One-shot (no-op otherwise)."""
+        with self._connect() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM ambiguous_keywords").fetchone()[0]
+            if count > 0:
+                return 0
+            inserted = 0
+            for kw in defaults:
+                if kw.strip():
+                    result = conn.execute(
+                        "INSERT OR IGNORE INTO ambiguous_keywords (keyword) VALUES (?)",
+                        (kw.strip().upper(),),
+                    )
+                    inserted += result.rowcount
+        return inserted
+
+    def get_ambiguous_keywords(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, keyword, created_at FROM ambiguous_keywords ORDER BY keyword"
+            ).fetchall()
+        return [{"id": r[0], "keyword": r[1], "created_at": r[2]} for r in rows]
+
+    def add_ambiguous_keyword(self, keyword: str) -> dict:
+        """Add a keyword (max length 60, stored uppercased). Raises ValueError on duplicate."""
+        keyword = (keyword or "").strip().upper()[:60]
+        if not keyword:
+            raise ValueError("Keyword cannot be empty.")
+        with self._connect() as conn:
+            try:
+                cursor = conn.execute(
+                    "INSERT INTO ambiguous_keywords (keyword) VALUES (?)", (keyword,)
+                )
+                row_id = cursor.lastrowid
+                row = conn.execute(
+                    "SELECT keyword FROM ambiguous_keywords WHERE id = ?", (row_id,)
+                ).fetchone()
+            except Exception as exc:
+                logger.debug("Duplicate or invalid keyword '%s': %s", keyword, exc)
+                raise ValueError(f"Keyword '{keyword}' already exists.")
+        return {"id": row_id, "keyword": row[0]}
+
+    def delete_ambiguous_keyword(self, keyword_id: int) -> bool:
+        with self._connect() as conn:
+            result = conn.execute(
+                "DELETE FROM ambiguous_keywords WHERE id = ?", (keyword_id,)
+            )
+        return result.rowcount > 0
 
     # ------------------------------------------------------------------
     # YAML / seed migrations (one-shot)

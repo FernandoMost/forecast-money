@@ -180,7 +180,8 @@
     "prorateSave": "Prorratear",
     "prorateBadge": "Prorrateado: {n} meses × {amount}/mes",
     "saving": "Guardando…",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "proratePerMonthShort": "€/mes"
   },
   "categories": {
     "title": "Categorías",
@@ -439,43 +440,7 @@
     "stripCount": "vez(veces)"
   },
   "categoryRules": {
-    "tabCategories": "Categorías",
-    "tabRules": "Reglas",
-    "tabSuggestions": "Sugerencias",
-    "rulesTitle": "Reglas de categorización",
-    "rulesSubtitle": "Orden de evaluación: primero gana. Se aplican tras limpiar la descripción.",
-    "noRules": "No hay reglas de categorización. Crea la primera.",
-    "newRule": "+ Nueva regla",
-    "colPatterns": "Patrones (regex)",
-    "colCategory": "Categoría",
-    "colMatches": "Usos",
-    "applyAndRecategorize": "Aplicar y recategorizar",
-    "applying": "Aplicando…",
-    "appliedSuccess": "{n} movimientos recategorizados.",
-    "edit": "Editar",
-    "delete": "Eliminar",
-    "save": "Guardar",
-    "saving": "Guardando…",
-    "cancel": "Cancelar",
-    "confirmDelete": "¿Eliminar esta regla de categorización?",
-    "fieldCategory": "Categoría",
-    "fieldSubcategory": "Subcategoría",
-    "fieldPatterns": "Patrones",
-    "patternPlaceholder": "Patrón y Enter",
-    "errorNeedsCategory": "Selecciona una categoría.",
-    "errorNeedsPattern": "Añade al menos un patrón.",
-    "suggestionsTitle": "Sugerencias de categorización",
-    "suggestionsSubtitle": "{count} grupos con descripción limpia pero sin categoría asignada.",
-    "suggestionsEmpty": "No hay movimientos con descripción limpia sin categorizar.",
-    "suggestionsCount": "{n} movimiento(s) · último {date}",
-    "createRule": "Crear también una regla automática",
-    "apply": "Asignar",
-    "applying2": "Asignando…",
-    "dismiss": "Descartar",
-    "associateCategory": "Asociar categoría",
-    "associateCategoryHint": "La categoría asociada tendrá prioridad máxima sobre las demás reglas.",
-    "noAssociation": "Sin asociación",
-    "clearAssociation": "Quitar asociación"
+    "tabReview": "Compras"
   },
   "settings": {
     "title": "Ajustes",
@@ -500,5 +465,23 @@
     "errorPasswordMatch": "Las contraseñas no coinciden.",
     "errorShortPassword": "La contraseña debe tener al menos 8 caracteres.",
     "errorNoFile": "Selecciona un archivo de backup."
+  },
+  "reviewTab": {
+    "hint": "Gastos en marketplaces (Vinted, Amazon, Wallapop, PayPal…) cuyo producto real no se puede deducir del extracto bancario. Asigna su categoría real o confirma la actual; las revisadas se marcan como manuales y dejan de aparecer aquí.",
+    "keywordsTitle": "Comercios opacos (palabras clave)",
+    "keywordPlaceholder": "Palabra clave · p. ej. ALIEXPRESS",
+    "addKeyword": "Añadir",
+    "removeKeyword": "Quitar palabra clave",
+    "errorAddKeyword": "No se pudo añadir la palabra clave (¿ya existe?).",
+    "noKeywords": "Sin palabras clave.",
+    "current": "Actual",
+    "keep": "✓ Mantener",
+    "keepTitle": "Confirmar la categoría actual — se marca como manual",
+    "pickCategory": "Elige categoría",
+    "pickSubcategory": "Elige subcategoría",
+    "assign": "Asignar categoría real",
+    "noneCategory": "Sin categoría",
+    "empty": "No hay compras opacas por revisar.",
+    "loadMore": "Cargar más"
   }
 }

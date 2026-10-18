@@ -1018,35 +1018,42 @@ export default function TransactionsPage() {
         const isIncome = tx.amount > 0 && !tx.is_reversal;
         const canProrate = tx.amount < 0 && !tx.is_reversal && !!meta?.onProrate;
         const pror = tx.proration_months?.length ?? 0;
+        const monthly = pror > 1
+          ? formatEur(-Math.round(Math.round(Math.abs(tx.amount) * 100) / pror) / 100)
+          : null;
         return (
-          <span className="tabular-nums whitespace-nowrap font-medium inline-flex items-center justify-end gap-1">
-            <span className={isIncome ? "text-green-700 font-bold" : "text-gray-700 dark:text-gray-200"}>
-              {formatEur(tx.amount)}
+          <div className="tabular-nums whitespace-nowrap flex flex-col items-end">
+            <span className="font-medium inline-flex items-center justify-end gap-1">
+              <span className={isIncome ? "text-green-700 font-bold" : "text-gray-700 dark:text-gray-200"}>
+                {formatEur(tx.amount)}
+              </span>
+              {canProrate && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); meta.onProrate?.(tx); }}
+                  title={t("transactions.prorateTitle")}
+                  className="p-0.5 rounded text-gray-300 dark:text-gray-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors shrink-0"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <circle cx="12" cy="12" r="3" />
+                    <path strokeLinecap="round" d="M5.5 7.5 18.5 16.5M18.5 7.5 5.5 16.5" />
+                  </svg>
+                </button>
+              )}
             </span>
             {pror > 1 && (
               <span
-                title={t("transactions.prorateBadge", {
-                  n: String(pror),
-                  amount: formatEur(-Math.round(Math.round(Math.abs(tx.amount) * 100) / pror) / 100),
-                })}
-                className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 shrink-0"
+                title={t("transactions.prorateBadge", { n: String(pror), amount: monthly! })}
+                className="mt-0.5 inline-flex items-center gap-0.5 px-1.5 py-px rounded-full bg-indigo-100 dark:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300 leading-tight"
               >
-                ÷{pror}
-              </span>
-            )}
-            {canProrate && (
-              <button
-                onClick={(e) => { e.stopPropagation(); meta.onProrate?.(tx); }}
-                title={t("transactions.prorateTitle")}
-                className="p-0.5 rounded text-gray-300 dark:text-gray-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors shrink-0"
-              >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
                   <circle cx="12" cy="12" r="3" />
                   <path strokeLinecap="round" d="M5.5 7.5 18.5 16.5M18.5 7.5 5.5 16.5" />
                 </svg>
-              </button>
+                {pror} · {monthly}
+                <span className="text-[9px] font-medium opacity-75">{t("transactions.proratePerMonthShort")}</span>
+              </span>
             )}
-          </span>
+          </div>
         );
       },
     },
